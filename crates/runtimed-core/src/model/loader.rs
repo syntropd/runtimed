@@ -4,7 +4,7 @@ use crate::error::RuntimedError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{RwLock, RwLockReadGuard};
 
 /// Metadata for an active model loaded into memory or compute device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ pub struct LoadedModel {
 /// Manages active loaded models and dynamic eviction.
 pub struct ModelManager {
     models_dir: PathBuf,
-    active_models: Mutex<HashMap<String, LoadedModel>>,
+    active_models: RwLock<HashMap<String, LoadedModel>>,
 }
 
 impl ModelManager {
@@ -34,47 +34,46 @@ impl ModelManager {
     pub fn new<P: AsRef<Path>>(models_dir: P) -> Self {
         Self {
             models_dir: models_dir.as_ref().to_path_buf(),
-            active_models: Mutex::new(HashMap::new()),
+            active_models: RwLock::new(HashMap::new()),
         }
     }
 
     /// Loads or binds a model into memory for inference.
+    ///
+    /// Uses `HashMap::entry().or_insert_with(...)` under the write lock so
+    /// the read-then-write race (a second caller with a different
+    /// `backend` slipping between the read check and the write insert)
+    /// is closed. The entry API only inserts if absent, so the first
+    /// caller's synthetic profile wins; concurrent calls return clones of
+    /// the canonical entry.
+    ///
+    /// The synthetic `LoadedModel` is constructed inside the closure so
+    /// repeated `load_model` for an already-loaded model does not pay
+    /// for the per-field `String` allocations.
     pub fn load_model(&self, name: &str, backend: Option<&str>) -> Result<LoadedModel, RuntimedError> {
-        let mut lock = self.active_models.lock().map_err(|_| {
-            RuntimedError::GenerationFailed("Model manager mutex poisoned".into())
-        })?;
-
-        if let Some(existing) = lock.get(name) {
-            return Ok(existing.clone());
-        }
-
-        let backend_str = backend.unwrap_or("cpu-avx2").to_string();
-
-        // Synthetic/default profile for system inference
-        let model = LoadedModel {
-            name: name.to_string(),
-            architecture: "transformer".to_string(),
-            parameter_count: 7_000_000_000,
-            memory_bytes: 4_500_000_000,
-            context_window: 8192,
-            compute_backend: backend_str,
-        };
-
-        lock.insert(name.to_string(), model.clone());
-        Ok(model)
+        let mut lock = self.write_lock()?;
+        let entry = lock
+            .entry(name.to_string())
+            .or_insert_with(|| LoadedModel {
+                name: name.to_string(),
+                architecture: "transformer".to_string(),
+                parameter_count: 7_000_000_000,
+                memory_bytes: 4_500_000_000,
+                context_window: 8192,
+                compute_backend: backend.unwrap_or("cpu-avx2").to_string(),
+            });
+        Ok(entry.clone())
     }
 
     /// Retrieves an active model definition by name.
     pub fn get_model(&self, name: &str) -> Option<LoadedModel> {
-        self.active_models.lock().ok()?.get(name).cloned()
+        let lock = self.read_lock().ok()?;
+        lock.get(name).cloned()
     }
 
     /// Unloads a model and releases its memory allocation.
     pub fn unload_model(&self, name: &str) -> Result<usize, RuntimedError> {
-        let mut lock = self.active_models.lock().map_err(|_| {
-            RuntimedError::GenerationFailed("Model manager mutex poisoned".into())
-        })?;
-
+        let mut lock = self.write_lock()?;
         match lock.remove(name) {
             Some(model) => Ok(model.memory_bytes),
             None => Err(RuntimedError::ModelNotFound(name.to_string())),
@@ -83,14 +82,27 @@ impl ModelManager {
 
     /// Returns a list of all currently active models.
     pub fn list_active(&self) -> Vec<LoadedModel> {
-        self.active_models
-            .lock()
-            .map(|l| l.values().cloned().collect())
-            .unwrap_or_default()
+        let lock = match self.read_lock() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
+        lock.values().cloned().collect()
     }
 
     /// Returns the models directory path.
     pub fn models_dir(&self) -> &Path {
         &self.models_dir
+    }
+
+    fn read_lock(&self) -> Result<RwLockReadGuard<'_, HashMap<String, LoadedModel>>, RuntimedError> {
+        self.active_models.read().map_err(|_| {
+            RuntimedError::GenerationFailed("Model manager lock poisoned".into())
+        })
+    }
+
+    fn write_lock(&self) -> Result<std::sync::RwLockWriteGuard<'_, HashMap<String, LoadedModel>>, RuntimedError> {
+        self.active_models.write().map_err(|_| {
+            RuntimedError::GenerationFailed("Model manager lock poisoned".into())
+        })
     }
 }

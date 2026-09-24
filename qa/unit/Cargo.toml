@@ -8,7 +8,11 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 runtimed-core = { path = "../../crates/runtimed-core" }
-runtimed-daemon = { path = "../../crates/runtimed-daemon" }
+runtimed-daemon = { path = "../../crates/runtimed-daemon", features = ["qa-test-helpers"] }
 serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+libc.workspace = true
+rustix.workspace = true

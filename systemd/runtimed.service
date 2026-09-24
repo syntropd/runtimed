@@ -6,6 +6,9 @@ After=network.target runtimed.socket
 
 [Service]
 Type=notify
+User=syntrop-runtime
+Group=syntrop
+RuntimeDirectory=syntrop
 ExecStart=/usr/local/bin/runtimed
 Restart=on-failure
 RestartSec=2s
@@ -25,9 +28,10 @@ LockPersonality=true
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 
-# Access to render nodes, models cache, and runtime socket
-ReadWritePaths=/run/syntrop
-ReadOnlyPaths=/var/lib/models /usr/lib/systemd/system
+# Read-write access to model cache and runtime socket directory.
+# ReadOnlyPaths=/var/lib/models was incorrect: the daemon needs to create
+# the directory and download weights at startup, not just read them.
+ReadWritePaths=/var/lib/models /run/syntrop
 DeviceAllow=/dev/dri/renderD* rw
 DeviceAllow=/dev/accel/* rw
 

@@ -7,6 +7,11 @@ use serde_json::json;
 pub const IO_SYNTROP_RUNTIME1_INTERFACE: &str = r#"
 interface io.syntrop.Runtime1
 
+# Concurrent execution is bounded by the daemon's `max_concurrent_requests`
+# configuration value (default 4). When all permits are held, additional
+# Generate and Embed calls return `io.syntrop.Runtime1.Overloaded` instead
+# of queueing.
+
 type LoadedModel (
   name: string,
   architecture: string,
@@ -34,6 +39,9 @@ error ModelNotFound(model: string)
 error ContextExceeded(requested: int, max: int)
 error GenerationFailed(reason: string)
 error InvalidParameter(parameter: string)
+error Overloaded(reason: string)
+error Shutdown(reason: string)
+error PermissionDenied()
 "#;
 
 /// Handles standard org.varlink.service method dispatches.

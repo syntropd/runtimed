@@ -6,6 +6,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+qa-test-helpers = []
+
 [lib]
 path = "src/lib.rs"
 

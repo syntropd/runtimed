@@ -336,6 +336,7 @@ name = "qa-edge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
  "runtimed-core",
  "runtimed-daemon",
  "serde_json",
@@ -348,8 +349,10 @@ name = "qa-unit"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
  "runtimed-core",
  "runtimed-daemon",
+ "rustix 0.38.44",
  "serde_json",
  "tempfile",
  "tokio",

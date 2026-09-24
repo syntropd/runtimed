@@ -5,24 +5,35 @@ use runtimed_core::engine::{generate_embedding, generate_tokens, GenerationReque
 use runtimed_core::model::ModelManager;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 /// Shared state required for Runtime1 method dispatches.
 #[derive(Clone)]
 pub struct Runtime1Handler {
     model_manager: Arc<ModelManager>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl Runtime1Handler {
-    /// Constructs a new Runtime1Handler.
+    /// Constructs a new Runtime1Handler with a built-in concurrency limit.
     pub fn new(model_manager: Arc<ModelManager>) -> Self {
-        Self { model_manager }
+        Self::with_max_concurrent(model_manager, 4)
+    }
+
+    /// Constructs a new Runtime1Handler with an explicit concurrency cap.
+    pub fn with_max_concurrent(model_manager: Arc<ModelManager>, max_concurrent: usize) -> Self {
+        let permits = if max_concurrent == 0 { 1 } else { max_concurrent };
+        Self {
+            model_manager,
+            semaphore: Arc::new(Semaphore::new(permits)),
+        }
     }
 
     /// Dispatches incoming io.syntrop.Runtime1 method calls.
     pub async fn handle_call(&self, method: &str, params: Option<&Value>) -> Option<VarlinkReply> {
         match method {
-            "io.syntrop.Runtime1.Generate" => Some(self.handle_generate(params)),
-            "io.syntrop.Runtime1.Embed" => Some(self.handle_embed(params)),
+            "io.syntrop.Runtime1.Generate" => Some(self.handle_generate(params).await),
+            "io.syntrop.Runtime1.Embed" => Some(self.handle_embed(params).await),
             "io.syntrop.Runtime1.GetModelStatus" => Some(self.handle_get_model_status(params)),
             "io.syntrop.Runtime1.UnloadModel" => Some(self.handle_unload_model(params)),
             "io.syntrop.Runtime1.ListLoadedModels" => Some(self.handle_list_loaded_models()),
@@ -30,7 +41,26 @@ impl Runtime1Handler {
         }
     }
 
-    fn handle_generate(&self, params: Option<&Value>) -> VarlinkReply {
+    fn acquire_permit(&self) -> Result<OwnedSemaphorePermit, VarlinkReply> {
+        match Arc::clone(&self.semaphore).try_acquire_owned() {
+            Ok(p) => Ok(p),
+            Err(TryAcquireError::NoPermits) => Err(VarlinkReply::err(
+                "io.syntrop.Runtime1.Overloaded",
+                Some(json!({ "reason": "max concurrent requests reached" })),
+            )),
+            Err(TryAcquireError::Closed) => Err(VarlinkReply::err(
+                "io.syntrop.Runtime1.Shutdown",
+                Some(json!({ "reason": "daemon semaphore closed" })),
+            )),
+        }
+    }
+
+    async fn handle_generate(&self, params: Option<&Value>) -> VarlinkReply {
+        let _permit = match self.acquire_permit() {
+            Ok(p) => p,
+            Err(r) => return r,
+        };
+
         let params = match params {
             Some(p) => p,
             None => {
@@ -97,7 +127,12 @@ impl Runtime1Handler {
         }
     }
 
-    fn handle_embed(&self, params: Option<&Value>) -> VarlinkReply {
+    async fn handle_embed(&self, params: Option<&Value>) -> VarlinkReply {
+        let _permit = match self.acquire_permit() {
+            Ok(p) => p,
+            Err(r) => return r,
+        };
+
         let text = match params.and_then(|p| p.get("text")).and_then(|t| t.as_str()) {
             Some(t) => t,
             None => {

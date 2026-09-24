@@ -7,8 +7,8 @@ publish = false
 
 [dependencies]
 anyhow.workspace = true
-runtimed-core = { path = "../../crates/runtimed-core" }
-runtimed-daemon = { path = "../../crates/runtimed-daemon", features = ["qa-test-helpers"] }
+runtimed-core = { package = "syntropd-runtimed-core", path = "../../crates/runtimed-core" }
+runtimed-daemon = { package = "syntropd-runtimed", path = "../../crates/runtimed-daemon", features = ["qa-test-helpers"] }
 serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

@@ -337,9 +337,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libc",
- "runtimed-core",
- "runtimed-daemon",
  "serde_json",
+ "syntropd-runtimed",
+ "syntropd-runtimed-core",
  "tempfile",
  "tokio",
 ]
@@ -350,10 +350,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libc",
- "runtimed-core",
- "runtimed-daemon",
  "rustix 0.38.44",
  "serde_json",
+ "syntropd-runtimed",
+ "syntropd-runtimed-core",
  "tempfile",
  "tokio",
 ]
@@ -398,53 +398,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "runtimectl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap_complete",
- "runtimed-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "runtimed-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "libc",
- "rustix 0.38.44",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "runtimed-daemon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "libc",
- "runtimed-core",
- "rustix 0.38.44",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "rustix"
@@ -591,6 +544,53 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syntropd-runtimectl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_complete",
+ "serde",
+ "serde_json",
+ "syntropd-runtimed-core",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "syntropd-runtimed"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "rustix 0.38.44",
+ "serde",
+ "serde_json",
+ "syntropd-runtimed-core",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "syntropd-runtimed-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "rustix 0.38.44",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
 ]
 
 [[package]]

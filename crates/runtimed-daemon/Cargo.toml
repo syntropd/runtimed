@@ -1,5 +1,5 @@
 [package]
-name = "runtimed-daemon"
+name = "syntropd-runtimed"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,7 @@ repository.workspace = true
 qa-test-helpers = []
 
 [lib]
+name = "runtimed_daemon"
 path = "src/lib.rs"
 
 [[bin]]
@@ -20,7 +21,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 libc.workspace = true
 rustix.workspace = true
-runtimed-core = { path = "../runtimed-core" }
+runtimed-core = { package = "syntropd-runtimed-core", path = "../runtimed-core" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

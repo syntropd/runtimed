@@ -1,5 +1,5 @@
 [package]
-name = "runtimed-core"
+name = "syntropd-runtimed-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 
 [lib]
+name = "runtimed_core"
 path = "src/lib.rs"
 
 [dependencies]

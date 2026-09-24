@@ -1,0 +1,16 @@
+[Unit]
+Description=Syntropd Headless Model Execution and Tensor Generation Varlink Socket
+Documentation=https://github.com/syntropd/runtimed
+PartOf=runtimed.service
+
+[Socket]
+ListenStream=/run/syntrop/io.syntrop.Runtime1
+SocketMode=0660
+SocketUser=root
+SocketGroup=syntrop
+DirectoryMode=0755
+PassCredentials=yes
+PassSecurity=yes
+
+[Install]
+WantedBy=sockets.target

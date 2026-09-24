@@ -1,0 +1,40 @@
+[Unit]
+Description=Syntropd Headless Model Execution and Tensor Generation Daemon
+Documentation=https://github.com/syntropd/runtimed
+Requires=runtimed.socket
+After=network.target runtimed.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/runtimed
+Restart=on-failure
+RestartSec=2s
+WatchdogSec=30s
+
+# Sandboxing and device permissions
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+MemoryDenyWriteExecute=false
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Access to render nodes, models cache, and runtime socket
+ReadWritePaths=/run/syntrop
+ReadOnlyPaths=/var/lib/models /usr/lib/systemd/system
+DeviceAllow=/dev/dri/renderD* rw
+DeviceAllow=/dev/accel/* rw
+
+# Resource limits (higher memory cap for tensor inference)
+MemoryHigh=8G
+MemoryMax=16G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

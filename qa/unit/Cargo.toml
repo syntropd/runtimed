@@ -1,0 +1,14 @@
+[package]
+name = "qa-unit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+runtimed-core = { path = "../../crates/runtimed-core" }
+runtimed-daemon = { path = "../../crates/runtimed-daemon" }
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true

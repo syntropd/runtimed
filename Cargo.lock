@@ -339,7 +339,7 @@ dependencies = [
  "libc",
  "serde_json",
  "syntrop-runtimed",
- "syntropd-runtimed-core",
+ "syntrop-runtimed-core",
  "tempfile",
  "tokio",
 ]
@@ -353,7 +353,7 @@ dependencies = [
  "rustix 0.38.44",
  "serde_json",
  "syntrop-runtimed",
- "syntropd-runtimed-core",
+ "syntrop-runtimed-core",
  "tempfile",
  "tokio",
 ]
@@ -398,6 +398,21 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "runtimectl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_complete",
+ "serde",
+ "serde_json",
+ "syntrop-runtimed-core",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "rustix"
@@ -555,7 +570,7 @@ dependencies = [
  "rustix 0.38.44",
  "serde",
  "serde_json",
- "syntropd-runtimed-core",
+ "syntrop-runtimed-core",
  "thiserror",
  "tokio",
  "tracing",
@@ -563,22 +578,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "syntropd-runtimectl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap_complete",
- "serde",
- "serde_json",
- "syntropd-runtimed-core",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "syntropd-runtimed-core"
+name = "syntrop-runtimed-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",

@@ -1,11 +1,11 @@
 [package]
-name = "syntropd-runtimed-core"
+name = "syntrop-runtimed-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-publish = false
+description = "Core library and sysext/portable runtime manager for syntrop-runtimed"
 
 [lib]
 name = "runtimed_core"

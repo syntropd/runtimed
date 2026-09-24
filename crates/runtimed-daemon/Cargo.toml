@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+description = "Sysext and portable systemd image runtime orchestrator for syntropd"
 
 [features]
 qa-test-helpers = []
@@ -21,7 +22,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 libc.workspace = true
 rustix.workspace = true
-runtimed-core = { package = "syntropd-runtimed-core", path = "../runtimed-core" }
+runtimed-core = { package = "syntrop-runtimed-core", version = "0.1.0", path = "../runtimed-core" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

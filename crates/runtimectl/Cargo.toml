@@ -1,5 +1,5 @@
 [package]
-name = "syntropd-runtimectl"
+name = "runtimectl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
-runtimed-core = { package = "syntropd-runtimed-core", path = "../runtimed-core" }
+runtimed-core = { package = "syntrop-runtimed-core", version = "0.1.0", path = "../runtimed-core" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

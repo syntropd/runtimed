@@ -1,5 +1,5 @@
 [package]
-name = "syntropd-runtimed"
+name = "syntrop-runtimed"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -338,7 +338,7 @@ dependencies = [
  "anyhow",
  "libc",
  "serde_json",
- "syntropd-runtimed",
+ "syntrop-runtimed",
  "syntropd-runtimed-core",
  "tempfile",
  "tokio",
@@ -352,7 +352,7 @@ dependencies = [
  "libc",
  "rustix 0.38.44",
  "serde_json",
- "syntropd-runtimed",
+ "syntrop-runtimed",
  "syntropd-runtimed-core",
  "tempfile",
  "tokio",
@@ -547,22 +547,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "syntropd-runtimectl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap_complete",
- "serde",
- "serde_json",
- "syntropd-runtimed-core",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "syntropd-runtimed"
+name = "syntrop-runtimed"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -572,6 +557,21 @@ dependencies = [
  "serde_json",
  "syntropd-runtimed-core",
  "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "syntropd-runtimectl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap_complete",
+ "serde",
+ "serde_json",
+ "syntropd-runtimed-core",
  "tokio",
  "tracing",
  "tracing-subscriber",

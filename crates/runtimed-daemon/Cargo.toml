@@ -22,7 +22,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 libc.workspace = true
 rustix.workspace = true
-runtimed-core = { package = "syntrop-runtimed-core", version = "0.1.0", path = "../runtimed-core" }
+runtimed-core = { package = "syntrop-runtimed-core", version = "0.3.0", path = "../runtimed-core" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

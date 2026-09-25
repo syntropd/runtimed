@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "qa-edge"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "qa-unit"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -401,7 +401,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "runtimectl"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "syntrop-runtimed"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -579,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "syntrop-runtimed-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "libc",

@@ -92,6 +92,57 @@ pub fn lookup_group(name: &str) -> u32 {
     }
 }
 
+/// Checks whether a user (by uid) belongs to the target gid, checking both
+/// their primary group and all supplementary groups via NSS/getgrouplist.
+pub fn is_user_in_group(uid: u32, target_gid: u32) -> bool {
+    let mut pwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let mut buf = vec![0u8; 2048];
+    let err = unsafe {
+        libc::getpwuid_r(
+            uid as libc::uid_t,
+            pwd.as_mut_ptr(),
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            &mut result,
+        )
+    };
+    if err != 0 || result.is_null() {
+        return false;
+    }
+    let username = unsafe { (*result).pw_name };
+    let primary_gid = unsafe { (*result).pw_gid };
+    if primary_gid as u32 == target_gid {
+        return true;
+    }
+
+    let mut ngroups: libc::c_int = 64;
+    let mut groups = vec![0 as libc::gid_t; 64];
+    let res = unsafe {
+        libc::getgrouplist(
+            username,
+            primary_gid,
+            groups.as_mut_ptr(),
+            &mut ngroups,
+        )
+    };
+    if res == -1 && ngroups > 64 {
+        groups.resize(ngroups as usize, 0);
+        let res2 = unsafe {
+            libc::getgrouplist(
+                username,
+                primary_gid,
+                groups.as_mut_ptr(),
+                &mut ngroups,
+            )
+        };
+        if res2 == -1 {
+            return false;
+        }
+    }
+    groups[..ngroups as usize].iter().any(|&g| g as u32 == target_gid)
+}
+
 /// Returns `Ok(())` when the peer is root or in the trusted group, else Err.
 pub fn authorize_peer<Fd: AsFd>(stream: Fd, trusted: TrustedGroup) -> Result<()> {
     let cred = rustix::net::sockopt::get_socket_peercred(stream)
@@ -110,7 +161,7 @@ pub fn authorize_peer<Fd: AsFd>(stream: Fd, trusted: TrustedGroup) -> Result<()>
             gid
         ));
     }
-    if gid == trusted.gid() {
+    if gid == trusted.gid() || is_user_in_group(uid, trusted.gid()) {
         Ok(())
     } else {
         Err(anyhow!(

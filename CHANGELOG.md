@@ -23,6 +23,10 @@ The installer now delivers a working brain, not an empty engine.
 - **Uninstaller**: also removes the installer-owned `cuda.conf`
   drop-in so a later CPU reinstall starts clean; models still kept.
 - **Docs**: README gained a real Install section with common variants.
+- **Bundle**: the release tarball is now self-installing (binaries plus
+  units, sysusers/tmpfiles confs, and the installer with `--from-bundle`
+  mode), so machines without Rust install straight from the GitHub
+  release page. Engine unchanged from the v0.5.0 tag.
 
 ## 0.4.0 (2026-09-27) — Owned engine, CUDA, release hardening
 

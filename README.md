@@ -23,12 +23,25 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 
 ## Install
 
-Prerequisites: a Rust toolchain (`cargo`) and `curl`.
+Two routes: from source (needs a Rust toolchain and `curl`), or from the
+release bundle (needs only `curl`).
+
+From source:
 
 ```bash
 git clone https://github.com/syntropd/runtimed.git
 cd runtimed
 sudo bash install/install.sh
+```
+
+From the release bundle (no Rust needed):
+
+```bash
+curl -fSL -o runtimed.tar.gz \
+  https://github.com/syntropd/runtimed/releases/download/v0.5.0/runtimed-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf runtimed.tar.gz
+cd runtimed-v0.5.0
+sudo bash install/install.sh --from-bundle bin
 ```
 
 The installer builds, registers the socket-activated service, enrolls you

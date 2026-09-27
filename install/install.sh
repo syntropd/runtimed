@@ -8,6 +8,7 @@ WITH_STARTER=0
 WITH_GEMMA=0
 WITH_VISION=0
 CUDA_GPU=""
+FROM_BUNDLE=""
 TARGET_USER="${SUDO_USER:-}"
 ASSUME_YES=0
 NO_MODELS=0
@@ -21,6 +22,7 @@ Options:
   --with-gemma           Download Gemma 4 E2B Q4, the recommended brain (~3.1 GB).
   --with-vision          Download the Gemma vision file for picture questions (~1 GB).
   --cuda-gpu N           Build with CUDA and use graphics card N automatically.
+  --from-bundle DIR      Install prebuilt binaries from DIR (no Rust needed).
   --user NAME            Enroll NAME in the syntrop group (default: invoking user).
   --yes                  Accept interactive defaults (recommended models).
   --no-models            Skip the interactive model download question.
@@ -34,6 +36,7 @@ while [[ $# -gt 0 ]]; do
         --with-gemma) WITH_GEMMA=1 ;;
         --with-vision) WITH_VISION=1 ;;
         --cuda-gpu) CUDA_GPU="${2:-}"; shift ;;
+        --from-bundle) FROM_BUNDLE="${2:-}"; shift ;;
         --user) TARGET_USER="${2:-}"; shift ;;
         --yes) ASSUME_YES=1 ;;
         --no-models) NO_MODELS=1 ;;
@@ -42,6 +45,20 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+
+# Fail fast on flag problems before demanding root.
+if [[ -n "${FROM_BUNDLE}" && -n "${CUDA_GPU}" ]]; then
+    echo "Error: --from-bundle is CPU-only; clone the repo for CUDA builds." >&2
+    exit 1
+fi
+if [[ -n "${FROM_BUNDLE}" ]]; then
+    for b in runtimed runtimectl; do
+        [[ -x "${FROM_BUNDLE}/${b}" ]] || {
+            echo "Error: --from-bundle ${FROM_BUNDLE} has no ${b} binary." >&2
+            exit 1
+        }
+    done
+fi
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Error: install.sh must be executed with root privileges." >&2
@@ -65,12 +82,15 @@ GEMMA_Q4_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/ge
 MMPROJ_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/mmproj-F16.gguf"
 
 echo "==> Checking prerequisites..."
-command -v cargo >/dev/null 2>&1 || {
-    echo "ERROR: the Rust toolchain is missing. Install it first:" >&2
-    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
-    echo "then open a fresh terminal and re-run this installer." >&2
-    exit 1
-}
+if [[ -z "${FROM_BUNDLE}" ]]; then
+    command -v cargo >/dev/null 2>&1 || {
+        echo "ERROR: the Rust toolchain is missing. Install it first:" >&2
+        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
+        echo "then open a fresh terminal and re-run this installer." >&2
+        echo "(Or use the release bundle, which needs no Rust: see README.)" >&2
+        exit 1
+    }
+fi
 command -v curl >/dev/null 2>&1 || {
     echo "ERROR: curl is missing. Install it (e.g. sudo dnf install curl) and re-run." >&2
     exit 1
@@ -83,6 +103,10 @@ if [[ "${RUNTIMED_CUDA:-0}" == "1" ]]; then
     }
 fi
 
+if [[ -n "${FROM_BUNDLE}" ]]; then
+    echo "==> Using prebuilt binaries from ${FROM_BUNDLE} (no build)..."
+    BIN_SRC="${FROM_BUNDLE}"
+else
 echo "==> Building runtimed and runtimectl in release mode..."
 if [[ "${RUNTIMED_CUDA:-0}" == "1" ]]; then
     : "${CUDA_ROOT:=/usr/local/cuda}"
@@ -97,10 +121,12 @@ if [[ "${RUNTIMED_CUDA:-0}" == "1" ]]; then
 else
     cargo build --release --manifest-path "${ROOT_DIR}/Cargo.toml"
 fi
+    BIN_SRC="${ROOT_DIR}/target/release"
+fi
 
 echo "==> Installing binaries to /usr/local/bin..."
-install -m 0755 "${ROOT_DIR}/target/release/runtimed" /usr/local/bin/runtimed
-install -m 0755 "${ROOT_DIR}/target/release/runtimectl" /usr/local/bin/runtimectl
+install -m 0755 "${BIN_SRC}/runtimed" /usr/local/bin/runtimed
+install -m 0755 "${BIN_SRC}/runtimectl" /usr/local/bin/runtimectl
 
 echo "==> Setting up system user, groups, and directories..."
 install -m 0644 "${ROOT_DIR}/sysusers.d/runtimed.conf" /usr/lib/sysusers.d/runtimed.conf

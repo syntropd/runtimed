@@ -1,0 +1,20 @@
+[package]
+name = "syntrop-runtimed-gguf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Zero-ML-dependency GGUF parser, dequantizer, and weight registry for syntrop-runtimed"
+
+[lib]
+name = "runtimed_gguf"
+path = "src/lib.rs"
+
+[dependencies]
+hex.workspace = true
+memmap2.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true

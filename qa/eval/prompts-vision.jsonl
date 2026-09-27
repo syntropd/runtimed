@@ -1,0 +1,5 @@
+{"id": "red-square-color", "image": "images/red-square.png", "prompt": "What color is the square? One word only."}
+{"id": "shapes-count", "image": "images/shapes.png", "prompt": "How many colored shapes are in this image? Answer with the number only."}
+{"id": "shapes-describe", "image": "images/shapes.png", "prompt": "Describe this image in one sentence."}
+{"id": "circle-color", "image": "images/shapes.png", "prompt": "What color is the circle? One word only."}
+{"id": "gradient-describe", "image": "images/gradient.png", "prompt": "Describe this image in one sentence."}

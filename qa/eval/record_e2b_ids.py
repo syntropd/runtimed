@@ -1,8 +1,8 @@
 """Record E2B oracle with TRUE token ids from the reference llama-server.
 
-Why not Ollama: Ollama's raw mode omits BOS, which makes E2B emit an
-immediate end-of-turn (a degenerate oracle). llama-server adds BOS like
-a normal client, and returns per-token ids via n_probs.
+Why llama-server: some servers' raw mode omits BOS, which makes E2B emit
+an immediate end-of-turn (a degenerate oracle). llama-server adds BOS
+like a normal client, and returns per-token ids via n_probs.
 
 Requires: llama-server on :8080 serving gemma-4-E2B-it-Q4_K_M.gguf.
 Writes: oracle-e2b-ids.jsonl

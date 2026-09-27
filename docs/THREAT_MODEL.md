@@ -19,7 +19,7 @@ source, pinned dependencies, pinned weights, reproducible builds.
 - Fleet attacks: rogue peer serving poisoned results, eavesdropped prompts.
 
 Out of scope (accepted, documented): compiler/CPU-microcode trust,
-physical access, side-channel key extraction, HF/Ollama account security.
+physical access, side-channel key extraction, HF account security.
 
 ## Rules (binding on every phase)
 

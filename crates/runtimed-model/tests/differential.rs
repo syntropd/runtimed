@@ -1,4 +1,4 @@
-//! Differential proofs: greedy generation must reproduce the Ollama oracle.
+//! Differential proofs: greedy generation must reproduce the reference oracle.
 //!
 //! Gated on `SYNTROP_TEST_GGUF` (Qwen2.5-0.5B Q8), `SYNTROP_TEST_GGUF_Q4K`
 //! (Gemma4 E2B Q4_K_M), `SYNTROP_TEST_TOKENIZER` (Qwen tokenizer.json).

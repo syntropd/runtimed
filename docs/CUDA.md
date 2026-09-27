@@ -75,7 +75,7 @@ dtype width), plus a 64 MiB allowance for tokenizer and runtime state.
 - One GPU can serve only what fits: a second loader gets CUDA OOM, not a
   queue. Coordinate large models across the two cards with the fleet
   router (`runtimectl load` reports free slots and resident bytes).
-- Unrelated GPU tenants (e.g. ollama/llama-server on ringmaster) share
+- Unrelated GPU tenants (e.g. llama-server on ringmaster) share
   the same VRAM pool; whoever loads first wins. Check `nvidia-smi` before
   blaming the daemon for OOMs.
 - First request on a fresh worker thread binds the CUDA context

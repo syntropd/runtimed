@@ -23,17 +23,17 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 
 ## Install
 
-Fastest (one line, installs the latest release plus the Gemma 4 E2B brain):
+Fastest: one line installs the whole suite plus the Gemma 4 E2B brain:
 
 ```bash
-curl -fsSL https://syntropd.github.io/runtimed-install.sh | sudo bash
+curl -fsSL https://syntropd.github.io/install.sh | sudo bash
 ```
 
-Extra options go after `-s --`, e.g. `| sudo bash -s -- --with-vision`.
-`RUNTIMED_VERSION=X.Y.Z` (or `--version X.Y.Z`) pins a release.
+Extra options go after `-s --`, e.g. `| sudo bash -s -- --with-vision`
+or `--no-models` for the engines without brains.
 
-Two manual routes: from source (needs a Rust toolchain and `curl`), or
-from the release bundle (needs only `curl`).
+Two manual runtimed-only routes: from source (needs a Rust toolchain
+and `curl`), or from the release bundle (needs only `curl`).
 
 From source:
 

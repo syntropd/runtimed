@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **One installer**: the runtimed-only one-liner is gone, merged into the
+  fleet installer (`https://syntropd.github.io/install.sh`), which now
+  ships the Gemma brain by default (syntropd 0.3.9).
+- **runtimectl on crates.io**: the CLI crate is published now, so the
+  fleet installer's crates.io fallback can provide it.
+- **tmpfiles**: model dirs match fleet permissions (0775 root:syntrop).
+
 ## 0.5.0 (2026-09-27) — Install process: models, groups, self-verify
 
 The installer now delivers a working brain, not an empty engine.

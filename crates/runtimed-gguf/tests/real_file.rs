@@ -56,6 +56,25 @@ fn parses_real_q4k_file() {
 }
 
 #[test]
+fn tokenizer_roundtrip() {
+    let Some(path) = gated("SYNTROP_TEST_TOKENIZER") else { return };
+    let tok = runtimed_gguf::Tokenizer::from_file(&path).expect("must load");
+    assert!(tok.vocab_size() > 100_000, "vocab: {}", tok.vocab_size());
+    for text in [
+        "Hello, world!",
+        "count the r's in strawberry",
+        "fn main() { println!(\"hi\"); }",
+        "日本語テスト 🎉 123",
+        "The quick brown fox jumps over the lazy dog. ".repeat(3).leak(),
+    ] {
+        let ids = tok.encode(text, false).expect("must encode");
+        assert!(!ids.is_empty());
+        let back = tok.decode(&ids, true).expect("must decode");
+        assert_eq!(back, text, "roundtrip failed");
+    }
+}
+
+#[test]
 fn registry_roundtrip() {
     let dir = std::env::temp_dir().join("syntrop-gguf-regtest");
     let _ = std::fs::remove_dir_all(&dir);

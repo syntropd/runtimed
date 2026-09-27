@@ -31,6 +31,9 @@ pub enum GgufError {
 
     #[error("registry: {0}")]
     Registry(String),
+
+    #[error("tokenizer: {0}")]
+    Tokenizer(String),
 }
 
 pub type Result<T> = std::result::Result<T, GgufError>;

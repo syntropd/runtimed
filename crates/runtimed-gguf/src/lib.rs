@@ -9,8 +9,10 @@ pub mod dtype;
 pub mod error;
 pub mod header;
 pub mod registry;
+pub mod tok;
 
 pub use dtype::GgmlDtype;
 pub use error::{GgufError, Result};
 pub use header::{GgufFile, MetaValue, TensorInfo};
 pub use registry::{verify_file, Registry, WeightEntry};
+pub use tok::Tokenizer;

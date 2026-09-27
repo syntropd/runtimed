@@ -190,7 +190,8 @@ fetch() {
         exit 1
     fi
     mv "${tmp}" "${dest}"
-    chmod 0644 "${dest}"
+    chgrp syntrop "${dest}"
+    chmod 0640 "${dest}"
 }
 
 if [[ "${WITH_STARTER}" -eq 1 || "${WITH_GEMMA}" -eq 1 || "${WITH_VISION}" -eq 1 ]]; then

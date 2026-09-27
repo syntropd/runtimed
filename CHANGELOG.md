@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 (2026-09-27) — Install process: models, groups, self-verify
+
+The installer now delivers a working brain, not an empty engine.
+
+- **Model provisioning**: `install.sh` fetches verified models into
+  `/var/lib/models/gguf/` — `--with-gemma` (Gemma 4 E2B Q4, asked
+  interactively by default), `--with-starter-model` (Qwen 0.5B Q8 plus
+  its sidecar tokenizer), `--with-vision` (mmproj-F16). All URLs
+  verified live; downloads are atomic and resumable by re-running.
+- **User enrollment**: the installer adds the invoking user to the
+  `syntrop` group (the step the CLI needs to reach the socket) and
+  says when a fresh login is required.
+- **One-flag CUDA**: `--cuda-gpu N` builds with CUDA and writes the
+  backend drop-in automatically; no more manual unit surgery.
+- **Self-verify**: every install ends by proving the socket is live
+  and the daemon answers, then prints the exact first command to run.
+- **Engine**: model/adapter/projector names now also resolve under
+  the `gguf/` subdir (fleet layout shared with modeld), and
+  `registry.toml` is honored there too (new `model::resolve` module,
+  7 tests). No config file needed on any layout.
+- **Uninstaller**: also removes the installer-owned `cuda.conf`
+  drop-in so a later CPU reinstall starts clean; models still kept.
+- **Docs**: README gained a real Install section with common variants.
+
 ## 0.4.0 (2026-09-27) — Owned engine, CUDA, release hardening
 
 First release of the owned Rust inference engine (no llama.cpp, no cloud).

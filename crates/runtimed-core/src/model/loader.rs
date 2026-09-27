@@ -6,6 +6,7 @@
 //! `LoadedModel`; generation uses the live `EngineEntry`.
 
 use super::meta::{EngineEntry, LoadedModel};
+use super::resolve::{load_registry, resolve_path};
 use super::tokenizer::EngineTokenizer;
 use crate::error::RuntimedError;
 use candle_core::Device;
@@ -19,8 +20,9 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 pub struct ModelManager {
     models_dir: PathBuf,
     active_models: RwLock<HashMap<String, Arc<EngineEntry>>>,
-    /// SHA256 pins from `<models_dir>/registry.toml` (R2). `None` means
-    /// no registry file: loads proceed unenforced (fail-open, logged).
+    /// SHA256 pins from `registry.toml` at the models root or its
+    /// `gguf/` subdir (R2). `None` means no registry file: loads
+    /// proceed unenforced (fail-open, logged).
     registry: Option<Registry>,
     /// Parse failure of a present-but-broken registry (also fail-open).
     registry_error: Option<String>,
@@ -30,11 +32,7 @@ impl ModelManager {
     /// Initializes a ModelManager rooted at the designated model weights directory.
     pub fn new<P: AsRef<Path>>(models_dir: P) -> Self {
         let models_dir = models_dir.as_ref().to_path_buf();
-        let (registry, registry_error) = match Registry::load(&models_dir.join("registry.toml")) {
-            Ok(r) => (Some(r), None),
-            Err(e) if e.is_missing() => (None, None),
-            Err(e) => (None, Some(e.to_string())),
-        };
+        let (registry, registry_error) = load_registry(&models_dir);
         Self {
             models_dir,
             active_models: RwLock::new(HashMap::new()),
@@ -55,21 +53,10 @@ impl ModelManager {
     }
 
     /// Resolve a model name to a GGUF path: absolute paths pass through,
-    /// bare names resolve under the models directory (`.gguf` implied).
+    /// bare names resolve under the models directory (`.gguf` implied),
+    /// then under its `gguf/` subdir (fleet layout).
     pub(super) fn resolve(&self, name: &str) -> Option<PathBuf> {
-        let literal = PathBuf::from(name);
-        if literal.is_absolute() && literal.exists() {
-            return Some(literal);
-        }
-        let direct = self.models_dir.join(name);
-        if direct.exists() {
-            return Some(direct);
-        }
-        let with_ext = self.models_dir.join(format!("{name}.gguf"));
-        if with_ext.exists() {
-            return Some(with_ext);
-        }
-        None
+        resolve_path(&self.models_dir, name)
     }
 
     /// R2 pin check: no-op without a registry; with one, unknown names

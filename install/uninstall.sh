@@ -17,6 +17,9 @@ rm -f /usr/lib/systemd/system/runtimed.service
 rm -f /usr/lib/systemd/system/runtimed.socket
 rm -f /usr/lib/sysusers.d/runtimed.conf
 rm -f /usr/lib/tmpfiles.d/runtimed.conf
+# A stale backend drop-in would break a later CPU reinstall. Only the
+# file this installer owns is removed; other admin drop-ins are kept.
+rm -f /etc/systemd/system/runtimed.service.d/cuda.conf
 
 echo "==> Reloading systemd daemon..."
 systemctl daemon-reload

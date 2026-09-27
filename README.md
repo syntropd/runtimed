@@ -21,6 +21,42 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 
 ---
 
+## Install
+
+Prerequisites: a Rust toolchain (`cargo`) and `curl`.
+
+```bash
+git clone https://github.com/syntropd/runtimed.git
+cd runtimed
+sudo bash install/install.sh
+```
+
+The installer builds, registers the socket-activated service, enrolls you
+in the `syntrop` group, asks whether to download the recommended brain
+(Gemma 4 E2B, 3.1 GB), then verifies the daemon answers. Re-running is
+safe: finished steps are skipped.
+
+Common variants:
+
+```bash
+sudo bash install/install.sh --with-gemma --with-vision   # brain + picture questions
+sudo bash install/install.sh --with-starter-model         # tiny Qwen for weak machines
+sudo bash install/install.sh --cuda-gpu 0 --with-gemma    # NVIDIA build + card 0
+sudo bash install/install.sh --yes                        # non-interactive, recommended brain
+```
+
+After installing, log out and back in (group membership), then:
+
+```bash
+runtimectl generate -m gemma-4-E2B-it-Q4_K_M "Say hello in one sentence."
+```
+
+Models live in `/var/lib/models/gguf/` (a flat `/var/lib/models/` tree
+works too). Uninstall with `sudo bash install/uninstall.sh`; downloaded
+models are kept.
+
+---
+
 ## Directory Structure
 
 ```

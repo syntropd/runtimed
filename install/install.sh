@@ -7,6 +7,7 @@ set -euo pipefail
 WITH_STARTER=0
 WITH_GEMMA=0
 WITH_VISION=0
+EXPLICIT_GEMMA=0
 CUDA_GPU=""
 FROM_BUNDLE=""
 TARGET_USER="${SUDO_USER:-}"
@@ -20,6 +21,8 @@ Usage: sudo bash install/install.sh [OPTIONS]
 Options:
   --with-starter-model   Download Qwen 0.5B starter model (~700 MB).
   --with-gemma           Download Gemma 4 E2B Q4, the recommended brain (~3.1 GB).
+                           Needs ~30 GB RAM (CPU) or ~12 GB VRAM (CUDA);
+                           smaller CPU machines get Qwen unless explicit.
   --with-vision          Download the Gemma vision file for picture questions (~1 GB).
   --cuda-gpu N           Build with CUDA and use graphics card N automatically.
   --from-bundle DIR      Install prebuilt binaries from DIR (no Rust needed).
@@ -33,7 +36,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --with-starter-model) WITH_STARTER=1 ;;
-        --with-gemma) WITH_GEMMA=1 ;;
+        --with-gemma) WITH_GEMMA=1; EXPLICIT_GEMMA=1 ;;
         --with-vision) WITH_VISION=1 ;;
         --cuda-gpu) CUDA_GPU="${2:-}"; shift ;;
         --from-bundle) FROM_BUNDLE="${2:-}"; shift ;;
@@ -163,16 +166,38 @@ else
 fi
 
 # --- models: ask once when interactive, obey flags otherwise. ---
+# Gemma needs ~30 GB RAM on CPU (~12 GB VRAM with --cuda-gpu); small CPU
+# machines are offered Qwen instead. An explicit --with-gemma always wins.
+gemma_fits() {
+    # TEST_MEM_KB / TEST_VRAM_MIB override readings for tests only.
+    if [[ -n "${CUDA_GPU}" || "${RUNTIMED_CUDA:-0}" == "1" ]]; then
+        local vram="${TEST_VRAM_MIB:-$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -1)}"
+        if [[ -z "${vram}" ]]; then return 0; fi # can't verify; trust the operator
+        [[ "${vram}" -ge 12288 ]]
+    else
+        local mem_kb="${TEST_MEM_KB:-$(awk '/MemTotal/ {print $2}' /proc/meminfo)}"
+        [[ "${mem_kb}" -ge 31457280 ]]
+    fi
+}
 if [[ "${NO_MODELS}" -eq 0 && "${WITH_STARTER}" -eq 0 && "${WITH_GEMMA}" -eq 0 && "${WITH_VISION}" -eq 0 ]]; then
     if [[ "${ASSUME_YES}" -eq 1 ]]; then
-        WITH_GEMMA=1
+        if gemma_fits; then WITH_GEMMA=1; else WITH_STARTER=1; fi
     elif [[ -t 0 ]]; then
         ans=""
-        read -r -p "Download the recommended brain, Gemma 4 E2B (3.1 GB)? [Y/n] " ans || true
-        [[ "${ans}" =~ ^[Nn] ]] || WITH_GEMMA=1
+        if gemma_fits; then
+            read -r -p "Download the recommended brain, Gemma 4 E2B (3.1 GB)? [Y/n] " ans || true
+            [[ "${ans}" =~ ^[Nn] ]] || WITH_GEMMA=1
+        else
+            echo "NOTE: this machine is short of Gemma's ~30 GB RAM need; offering Qwen instead."
+            read -r -p "Download the Qwen starter brain (~700 MB, fits anywhere)? [Y/n] " ans || true
+            [[ "${ans}" =~ ^[Nn] ]] || WITH_STARTER=1
+        fi
     else
         echo "NOTE: non-interactive shell and no --with-* flag: skipping model downloads."
     fi
+fi
+if [[ "${WITH_GEMMA}" -eq 1 && "${EXPLICIT_GEMMA}" -eq 1 ]] && ! gemma_fits; then
+    echo "WARNING: explicit --with-gemma on a machine short of its needs; expect load failure." >&2
 fi
 
 fetch() {

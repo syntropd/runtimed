@@ -8,6 +8,11 @@
 - **runtimectl on crates.io**: the CLI crate is published now, so the
   fleet installer's crates.io fallback can provide it.
 - **tmpfiles**: model dirs match fleet permissions (0775 root:syntrop).
+- **RAM honesty**: the 5B engine needs ~21 GB F32 on CPU, so the
+  standalone installer offers Gemma only on 30+ GB machines (12+ GB
+  VRAM with `--cuda-gpu`) and Qwen elsewhere; explicit `--with-gemma`
+  always wins with a warning. Service memory ceiling raised to
+  24G/32G to match (fleet units mirrored).
 
 ## 0.5.0 (2026-09-27) — Install process: models, groups, self-verify
 

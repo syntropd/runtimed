@@ -23,7 +23,8 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 
 ## Install
 
-Fastest: one line installs the whole suite plus the Gemma 4 E2B brain:
+Fastest: one line installs the whole suite plus a fitting brain (Gemma 4
+E2B on machines with 30+ GB RAM, Qwen 0.5B elsewhere — picked automatically):
 
 ```bash
 curl -fsSL https://syntropd.github.io/install.sh | sudo bash

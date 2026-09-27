@@ -42,9 +42,10 @@ DeviceAllow=char-nvidia* rw
 DeviceAllow=char-drm rw
 DeviceAllow=char-accel rw
 
-# Resource limits (higher memory cap for tensor inference)
-MemoryHigh=8G
-MemoryMax=16G
+# Resource limits: the 5B engine holds ~21G F32 on CPU at load peak, so
+# the ceiling must clear it (smaller brains never approach these).
+MemoryHigh=24G
+MemoryMax=32G
 TasksMax=64
 
 [Install]

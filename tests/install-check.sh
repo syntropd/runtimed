@@ -35,4 +35,16 @@ n=$(grep -c "huggingface.co.*resolve/main" "${INSTALL}")
 [[ "${n}" -eq 4 ]] || { echo "FAIL: expected 4 model URLs, found ${n}"; exit 1; }
 pass "4 verified model URLs pinned"
 
+fit_tmp="$(mktemp)"
+trap 'rm -f "${fit_tmp}"' EXIT
+sed -n '/^gemma_fits() {/,/^}/p' "${INSTALL}" > "${fit_tmp}"
+fit() { # $1=mem_kb $2=cuda_gpu $3=vram_mib -> exit 0 fits, 1 no fit
+  CUDA_GPU="$2" RUNTIMED_CUDA=0 TEST_MEM_KB="$1" TEST_VRAM_MIB="$3" bash -c "source \"${fit_tmp}\"; gemma_fits"
+}
+fit 48000000 "" "" || { echo "FAIL: 48GB should fit Gemma"; exit 1; }
+if fit 8000000 "" ""; then echo "FAIL: 8GB should not fit Gemma"; exit 1; fi
+fit 8000000 "0" 16380 || { echo "FAIL: 16GB VRAM should fit Gemma"; exit 1; }
+if fit 8000000 "0" 6000; then echo "FAIL: 6GB VRAM should not fit Gemma"; exit 1; fi
+pass "gemma_fits() honors RAM and VRAM readings"
+
 echo "ALL INSTALLER CHECKS PASSED"

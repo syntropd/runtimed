@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# One-line installer bootstrap: fetches the self-installing release
+# runtimed one-line installer: fetches the self-installing release
 # bundle, verifies its checksum, and runs it. Usage:
 #
-#   curl -sSf https://raw.githubusercontent.com/syntropd/runtimed/main/install/quick-install.sh | sudo bash
+#   curl -fsSL https://syntropd.github.io/runtimed-install.sh | sudo bash
 #
 # That installs the latest release plus the recommended brain (Gemma 4
 # E2B). Options pass through to install.sh after `-s --`, e.g.:
@@ -12,6 +12,9 @@
 #
 # RUNTIMED_VERSION=X.Y.Z (or --version X.Y.Z) pins a release instead
 # of the latest. --dry-run prints the resolved version and URL only.
+#
+# Mirror: this file is served from the website repo, but the canonical
+# copy lives at runtimed/install/quick-install.sh — keep them identical.
 set -euo pipefail
 
 REPO="syntropd/runtimed"

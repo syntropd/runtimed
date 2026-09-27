@@ -8,7 +8,10 @@ After=network.target runtimed.socket
 Type=notify
 User=syntrop-runtime
 Group=syntrop
-RuntimeDirectory=syntrop
+# No RuntimeDirectory: /run/syntrop is owned by runtimed.socket (plus the
+# whole syntrop-sockets.target fleet). A service-level RuntimeDirectory
+# would wipe every fleet socket file on each (re)start. tmpfiles.d owns
+# the directory itself.
 ExecStart=/usr/local/bin/runtimed
 Restart=on-failure
 RestartSec=2s
@@ -32,8 +35,12 @@ SystemCallErrorNumber=EPERM
 # ReadOnlyPaths=/var/lib/models was incorrect: the daemon needs to create
 # the directory and download weights at startup, not just read them.
 ReadWritePaths=/var/lib/models /run/syntrop
-DeviceAllow=/dev/dri/renderD* rw
-DeviceAllow=/dev/accel/* rw
+# NOTE: any DeviceAllow line flips DevicePolicy=auto from allow-all to
+# allow-listed, and path globs (/dev/nvidia*) are NOT supported — only
+# `char-<group>` with group-name globs. Missing families = CUDA NO_DEVICE.
+DeviceAllow=char-nvidia* rw
+DeviceAllow=char-drm rw
+DeviceAllow=char-accel rw
 
 # Resource limits (higher memory cap for tensor inference)
 MemoryHigh=8G

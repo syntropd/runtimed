@@ -12,7 +12,9 @@ use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 /// Maximum size in bytes of a single Varlink request on the wire.
-pub const MAX_MSG_BYTES: usize = 1024 * 1024;
+/// Sized for base64 image payloads (~12 MiB decoded); the engine caps
+/// decoded images separately, so this is the outer backstop.
+pub const MAX_MSG_BYTES: usize = 16 * 1024 * 1024;
 
 /// Varlink server instance listening on a Unix domain socket.
 pub struct VarlinkServer {

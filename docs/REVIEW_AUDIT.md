@@ -1,5 +1,13 @@
 # runtimed Review — Audit, Summary, Next Steps (§5–9)
 
+**Status (Phase 7 audit, 2026-09-27): §7 items all fixed in code; §9
+steps 1–4 done.** §5 gaps narrowed: server framing/overflow is tested
+(`server_tests`, `protocol_edge`), model lifecycle is tested (`qa/unit`
++ `qa/edge`), tokenizer/dequant/attention carry unit + differential
+proofs. Remaining thin spots: no direct client-reply-cap test (§3.2)
+and no daemon bind/watchdog integration test. §6 recount below
+(supersedes the stub-era table).
+
 ## 5. Module-by-Module Test Coverage Gaps
 
 | Module | Unit tests | Edge tests | Gaps |
@@ -22,22 +30,21 @@
 
 ## 6. File Length Audit (≤ 256 LOC rule)
 
-**All files comply.** Largest files in each category:
+**All files comply** (recounted 2026-09-27 after the Phase 7 splits of
+`bpe`→`bpe`+`bpe_encode`, `dequant`→`dequant`+`dequant_k`,
+`vpre`→`vpre`+`vresize`, `loader`→`loader`+`meta`, and dead-code removal
+in `ops`). Largest production files:
 
-| Category | File | LOC |
-| --- | --- | --- |
-| Production Rust | `varlink/runtime1.rs` | 162 |
-| Production Rust | `varlink/server.rs` | 100 |
-| Production Rust | `model/loader.rs` | 96 |
-| Production Rust | `daemon/main.rs` | 98 |
-| QA test | `qa/unit/src/varlink_tests.rs` | 114 |
-| Doc | `docs/VARLINK_SPEC.md` | 80 |
-| Doc | `README.md` | 76 |
-| Doc | `docs/CLI_REFERENCE.md` | 81 |
-| Config | `systemd/runtimed.service` | 41 |
-| Config | `install/install.sh` | 42 |
+| File | LOC |
+| --- | --- |
+| `varlink/runtime1.rs` | 256 |
+| `model/loader.rs` | 256 |
+| `model/ops.rs` | 249 |
+| `model/config.rs` | 241 |
+| `varlink/server.rs` | 232 |
 
-No file approaches the 256 ceiling; ~35% headroom remains in the largest file.
+`runtime1.rs` and `loader.rs` sit exactly at the ceiling: the next
+change to either must split first.
 
 ## 7. Spec Violations Summary (action priority)
 

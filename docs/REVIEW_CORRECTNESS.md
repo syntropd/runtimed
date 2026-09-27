@@ -1,5 +1,11 @@
 # runtimed Review — Correctness Defects (§2)
 
+**Status (Phase 7 audit, 2026-09-27): all items closed.** 2.1 was never a
+defect; 2.2–2.7 are fixed in code and covered by the suites below.
+Fix evidence: `notify.rs` (`sendto_unix`, sanitize, `NOTIFY_MAX`),
+`protocol.rs` (`{}` fallback), `client.rs` (required params), `main.rs`
++ `runtime.rs` (watch-channel shutdown).
+
 ## 2.1 `parse_listen_fds` discards `fd_handoff_listener` for runtimed
 
 **File**: `crates/runtimed-daemon/src/activation.rs:11-15`

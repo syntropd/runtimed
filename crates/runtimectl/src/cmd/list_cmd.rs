@@ -39,7 +39,7 @@ pub async fn exec_list(client: &RuntimedClient, as_json: bool) -> Result<()> {
         let params = m
             .get("parameter_count")
             .and_then(|v| v.as_u64())
-            .map(|p| format!("{}B", p / 1_000_000_000))
+            .map(crate::cmd::human_count)
             .unwrap_or_else(|| "-".into());
         let ctx = m.get("context_window").and_then(|v| v.as_u64()).unwrap_or(0);
 

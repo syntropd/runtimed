@@ -1,5 +1,14 @@
 # runtimed Review — Security Issues (§3)
 
+**Status (Phase 7 audit, 2026-09-27): all items closed.** 3.1 (server
+16 MiB cap + `ProtocolError`) is tested by
+`test_handle_client_overflow_drops_connection`; 3.3/3.4 (bind + chmod
+0660 with cleanup), 3.5 (peer-cred + trusted group), 3.6 (watchdog
+task), 3.7 (non-root user, `ReadWritePaths`) are fixed in code. 3.2
+(client cap) is fixed but has no direct test. 3.8
+(`MemoryDenyWriteExecute=false`) is **required and justified**: NVRTC
+JIT-compiles CUDA kernels at runtime (see `docs/CUDA.md`).
+
 ## 3.1 Varlink server receive buffer unbounded → memory DoS
 
 **File**: `crates/runtimed-daemon/src/varlink/server.rs:50-81`

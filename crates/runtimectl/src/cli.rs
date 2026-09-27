@@ -45,6 +45,40 @@ pub enum Commands {
         /// Sampling temperature (0.0 for greedy deterministic decoding).
         #[arg(short = 't', long = "temperature", default_value = "0.0")]
         temperature: f32,
+
+        /// Top-k truncation (0 disables).
+        #[arg(long = "top-k", default_value = "0")]
+        top_k: usize,
+
+        /// Nucleus truncation (1.0 disables).
+        #[arg(long = "top-p", default_value = "1.0")]
+        top_p: f32,
+
+        /// Sampling seed (0 draws entropy from the clock).
+        #[arg(long = "seed", default_value = "0")]
+        seed: u64,
+
+        /// Image file (PNG/JPEG) for multimodal generation.
+        #[arg(long = "image")]
+        image: Option<String>,
+    },
+
+    /// Attach a vision projector to a loaded model.
+    AttachVision {
+        /// Target model identifier.
+        model: String,
+
+        /// Projector file (absolute path or models dir entry).
+        mmproj: String,
+    },
+
+    /// Fuse a LoRA adapter into a loaded model.
+    AttachLora {
+        /// Target model identifier.
+        model: String,
+
+        /// Adapter file (absolute path or models dir entry).
+        lora: String,
     },
 
     /// Generate normalized vector embeddings for text.
@@ -71,6 +105,9 @@ pub enum Commands {
 
     /// List all currently active loaded models.
     List,
+
+    /// Report daemon load (free slots, resident bytes) for fleet routing.
+    Load,
 
     /// Inspect daemon vendor information and interface schemas.
     Info,

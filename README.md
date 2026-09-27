@@ -15,8 +15,9 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 - **Dynamic Model Lifecycle Management**: On-demand model loading, hardware backend selection, and clean memory eviction.
 - **Fast Token Generation**: Strict context window checking, token budgeting, and execution metrics.
 - **Normalized Vector Embeddings**: 128-dimensional L2-normalized vector generation for semantic log and incident retrieval.
-- **Zero Dynamic C Dependencies**: Directly interfaces with Linux syscalls without `libsystemd.so` or `libdbus-1.so`.
-- **Systemd Hardening & Device Isolation**: Sandboxed systemd service unit with scoped `/dev/dri/renderD*` and `/dev/accel/*` permissions.
+- **Zero Dynamic C Dependencies** (CPU build): Directly interfaces with Linux syscalls without `libsystemd.so` or `libdbus-1.so`. The optional `cuda` feature links the NVIDIA driver libraries only.
+- **CUDA Acceleration** (optional): F16-resident weights with F32-exact compute on NVIDIA GPUs, one device per daemon. See [docs/CUDA.md](docs/CUDA.md).
+- **Systemd Hardening & Device Isolation**: Sandboxed systemd service unit with scoped `char-nvidia*` / `char-drm` / `char-accel` device permissions.
 
 ---
 
@@ -28,6 +29,8 @@ runtimed/
 ├── crates/
 │   ├── runtimed-core/       # Core model loader, tokenizer, vector embedder
 │   ├── runtimed-daemon/     # Daemon binary: socket activation, Varlink server
+│   ├── runtimed-gguf/       # GGUF parsing, dequantization, weight registry
+│   ├── runtimed-model/      # Owned engine: Gemma4/Qwen2, vision, LoRA, sampler
 │   └── runtimectl/          # Admin CLI utility for model interaction
 ├── qa/
 │   ├── unit/                # 1:1 unit tests for all core and daemon functions

@@ -1,5 +1,12 @@
 # runtimed Review — Logic and Resource Issues (§4)
 
+**Status (Phase 7 audit, 2026-09-27): written against the stub engine;
+all actionable items closed.** 4.2/4.3/4.5 are obsolete (real loader,
+real BPE counts); 4.4 (`RwLock`) and 4.6 (semaphore) are fixed; 4.1
+(512 B/request) and 4.7 (unload removes the map entry; in-flight work
+holds its `Arc`) are accepted as designed. 4.8 (hand-rolled arg parsing)
+is retained deliberately: the daemon stays `clap`-free.
+
 ## 4.1 `generate_embedding` allocates 128 floats per call without pooling
 
 **File**: `crates/runtimed-core/src/engine/embedder.rs:7-47`

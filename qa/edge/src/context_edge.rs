@@ -1,39 +1,47 @@
 //! Edge tests for context window limit enforcement.
+//!
+//! Gated on `SYNTROP_TEST_GGUF`: the over-long prompt is tokenized with
+//! the real tokenizer (fast) and rejected before any forward pass.
 
 #[cfg(test)]
 mod tests {
     use runtimed_core::engine::{generate_tokens, GenerationRequest};
     use runtimed_core::error::RuntimedError;
-    use runtimed_core::model::LoadedModel;
+    use runtimed_core::model::ModelManager;
+    use std::path::PathBuf;
 
     #[test]
     fn test_prompt_exceeding_context_returns_error() {
-        let model = LoadedModel {
-            name: "tiny-model".to_string(),
-            architecture: "transformer".to_string(),
-            parameter_count: 100_000_000,
-            memory_bytes: 100_000_000,
-            context_window: 10, // Very small context limit
-            compute_backend: "cpu".to_string(),
-        };
+        let Ok(gguf) = std::env::var("SYNTROP_TEST_GGUF") else { return };
+        let gguf = PathBuf::from(gguf);
+        if !gguf.exists() {
+            eprintln!("skip: SYNTROP_TEST_GGUF not set or missing");
+            return;
+        }
+        let manager = ModelManager::new(gguf.parent().unwrap());
+        let name = gguf.file_stem().unwrap().to_string_lossy().to_string();
+        let meta = manager.load_model(&name, None).unwrap();
+        let entry = manager.get_entry(&name).unwrap();
 
-        // Create a prompt with 20 tokens
-        let words = vec!["word"; 20].join(" ");
+        // 40k words tokenize to more than the 32k context window.
+        let words = vec!["word"; 40_000].join(" ");
         let request = GenerationRequest {
-            model: "tiny-model".to_string(),
+            model: name,
             prompt: words,
             max_tokens: 32,
             temperature: 0.0,
+            top_k: 0,
+            top_p: 1.0,
+            seed: 0,
+            image_base64: None,
         };
 
-        let result = generate_tokens(&model, &request);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            RuntimedError::ContextExceeded { max, requested } => {
-                assert_eq!(max, 10);
-                assert_eq!(requested, 20);
+        match generate_tokens(&entry, &request) {
+            Err(RuntimedError::ContextExceeded { max, requested }) => {
+                assert_eq!(max, meta.context_window);
+                assert!(requested > max, "requested: {requested}");
             }
-            other => panic!("Unexpected error type: {:?}", other),
+            other => panic!("expected ContextExceeded, got {other:?}"),
         }
     }
 }

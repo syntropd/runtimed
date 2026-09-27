@@ -13,4 +13,4 @@ pub use engine::{
     EMBEDDING_DIM,
 };
 pub use error::RuntimedError;
-pub use model::{LoadedModel, ModelManager};
+pub use model::{EngineEntry, EngineTokenizer, LoadedModel, ModelManager};

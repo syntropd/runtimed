@@ -3,3 +3,11 @@
 *.swp
 *~
 .DS_Store
+# R2: weight bytes never enter git (registry.toml pins live beside the store).
+*.gguf
+*.ggml
+*.bin
+*.safetensors
+*.onnx
+__pycache__/
+*.pyc

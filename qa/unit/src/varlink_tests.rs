@@ -43,16 +43,27 @@ mod tests {
             .contains("interface io.syntrop.Runtime1"));
     }
 
+    /// Gated helper: manager rooted at the real tiny model's directory.
+    fn gated() -> Option<(ModelManager, String)> {
+        let gguf = std::path::PathBuf::from(std::env::var("SYNTROP_TEST_GGUF").ok()?);
+        if !gguf.exists() {
+            eprintln!("skip: SYNTROP_TEST_GGUF not set or missing");
+            return None;
+        }
+        let dir = gguf.parent().unwrap().to_path_buf();
+        let stem = gguf.file_stem().unwrap().to_string_lossy().to_string();
+        Some((ModelManager::new(dir), stem))
+    }
+
     #[tokio::test]
     async fn test_runtime1_generate() {
-        let tmp = tempdir().unwrap();
-        let manager = Arc::new(ModelManager::new(tmp.path()));
-        let handler = Runtime1Handler::new(manager);
+        let Some((manager, name)) = gated() else { return };
+        let handler = Runtime1Handler::new(Arc::new(manager));
 
         let params = json!({
-            "model": "qwen2.5-coder-7b",
+            "model": name,
             "prompt": "Inspect kernel error logs",
-            "max_tokens": 32,
+            "max_tokens": 16,
             "temperature": 0.0
         });
 
@@ -61,9 +72,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(reply.error.is_none());
+        assert!(reply.error.is_none(), "error: {:?}", reply.error);
         let res = reply.parameters.unwrap();
-        assert!(res["result"]["text"].as_str().unwrap().contains("qwen2.5"));
+        assert!(!res["result"]["text"].as_str().unwrap().is_empty());
+        assert!(res["result"]["prompt_tokens"].as_u64().unwrap() > 0);
+        assert!(res["result"]["completion_tokens"].as_u64().unwrap() > 0);
     }
 
     #[tokio::test]
@@ -89,12 +102,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime1_status_and_unload() {
-        let tmp = tempdir().unwrap();
-        let manager = Arc::new(ModelManager::new(tmp.path()));
-        manager.load_model("test-model", None).unwrap();
+        let Some((manager, name)) = gated() else { return };
+        let manager = Arc::new(manager);
+        manager.load_model(&name, None).unwrap();
         let handler = Runtime1Handler::new(manager);
 
-        let params = json!({ "model": "test-model" });
+        let params = json!({ "model": name });
 
         let status_reply = handler
             .handle_call("io.syntrop.Runtime1.GetModelStatus", Some(&params))

@@ -31,7 +31,7 @@ pub async fn exec_status(client: &RuntimedClient, model: &str, as_json: bool) ->
         let backend = m.get("compute_backend").and_then(|v| v.as_str()).unwrap_or("-");
 
         println!("Architecture: {}", arch);
-        println!("Parameters:   {} B", params_cnt / 1_000_000_000);
+        println!("Parameters:   {}", crate::cmd::human_count(params_cnt));
         println!("Memory:       {:.2} GiB", (mem as f64) / (1024.0 * 1024.0 * 1024.0));
         println!("Context:      {} tokens", ctx);
         println!("Backend:      {}", backend);

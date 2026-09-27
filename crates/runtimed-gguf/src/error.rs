@@ -37,3 +37,11 @@ pub enum GgufError {
 }
 
 pub type Result<T> = std::result::Result<T, GgufError>;
+
+impl GgufError {
+    /// True for missing-file I/O (lets callers fail open on absence while
+    /// treating corrupt content as an error).
+    pub fn is_missing(&self) -> bool {
+        matches!(self, Self::Io(e) if e.kind() == std::io::ErrorKind::NotFound)
+    }
+}

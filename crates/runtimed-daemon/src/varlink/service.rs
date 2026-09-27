@@ -29,7 +29,10 @@ type GenerationResult (
   duration_ms: int
 )
 
-method Generate(model: string, prompt: string, max_tokens: int, temperature: float) -> (result: GenerationResult)
+method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string) -> (result: GenerationResult)
+method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
+method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
+method GetLoad() -> (available_slots: int, max_slots: int, used_bytes: int, models: []LoadedModel)
 method Embed(model: string, text: string) -> (embedding: []float)
 method GetModelStatus(model: string) -> (status: string, model: ?LoadedModel)
 method UnloadModel(model: string) -> (freed_bytes: int)

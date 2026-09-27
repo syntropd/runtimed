@@ -21,7 +21,15 @@ const DEFAULT_TRUSTED_GROUP: &str = "syntrop";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // `fmt::init()` silently adopts `EnvFilter::from_default_env()` when the
+    // `env-filter` feature is on, and an unset RUST_LOG mutes everything
+    // below ERROR. Default to INFO; operators override via RUST_LOG.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
     info!("Starting runtimed (Headless Model Execution & Tensor Generation Daemon)");
 
     let args: Vec<String> = std::env::args().collect();
@@ -41,6 +49,7 @@ async fn main() -> Result<()> {
     }
 
     let model_manager = Arc::new(ModelManager::new(&config.models_dir));
+    info!("Weight pins (R2): {}", model_manager.registry_status());
 
     if !config.default_model.is_empty() {
         let _ = model_manager.load_model(&config.default_model, None);

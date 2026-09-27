@@ -1,0 +1,24 @@
+[package]
+name = "syntrop-runtimed-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Owned LLM forward pass: arch configs, candle-backed weights, generate loop"
+
+[lib]
+name = "runtimed_model"
+path = "src/lib.rs"
+
+[dependencies]
+candle-core.workspace = true
+image.workspace = true
+runtimed-gguf = { package = "syntrop-runtimed-gguf", path = "../runtimed-gguf" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[features]
+# NVIDIA acceleration (default build stays portable CPU-only).
+cuda = ["candle-core/cuda"]

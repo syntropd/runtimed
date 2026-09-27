@@ -10,8 +10,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 /// Shared state required for Runtime1 method dispatches.
 #[derive(Clone)]
 pub struct Runtime1Handler {
-    model_manager: Arc<ModelManager>,
-    semaphore: Arc<Semaphore>,
+    pub(super) model_manager: Arc<ModelManager>,
+    pub(super) semaphore: Arc<Semaphore>,
+    pub(super) max_slots: usize,
 }
 
 impl Runtime1Handler {
@@ -26,6 +27,7 @@ impl Runtime1Handler {
         Self {
             model_manager,
             semaphore: Arc::new(Semaphore::new(permits)),
+            max_slots: permits,
         }
     }
 
@@ -33,6 +35,9 @@ impl Runtime1Handler {
     pub async fn handle_call(&self, method: &str, params: Option<&Value>) -> Option<VarlinkReply> {
         match method {
             "io.syntrop.Runtime1.Generate" => Some(self.handle_generate(params).await),
+            "io.syntrop.Runtime1.AttachVision" => Some(self.handle_attach_vision(params).await),
+            "io.syntrop.Runtime1.AttachLora" => Some(self.handle_attach_lora(params).await),
+            "io.syntrop.Runtime1.GetLoad" => Some(self.handle_get_load()),
             "io.syntrop.Runtime1.Embed" => Some(self.handle_embed(params).await),
             "io.syntrop.Runtime1.GetModelStatus" => Some(self.handle_get_model_status(params)),
             "io.syntrop.Runtime1.UnloadModel" => Some(self.handle_unload_model(params)),
@@ -101,12 +106,51 @@ impl Runtime1Handler {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0) as f32;
 
-        let model = match self.model_manager.load_model(model_name, None) {
-            Ok(m) => m,
-            Err(e) => {
+        let top_k = params
+            .get("top_k")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+
+        let top_p = params
+            .get("top_p")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0) as f32;
+
+        let seed = params
+            .get("seed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        let image_base64 = params
+            .get("image")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+
+        // Loading dequantizes gigabytes; keep it off the async executor.
+        let manager = Arc::clone(&self.model_manager);
+        let name_owned = model_name.to_string();
+        let loaded = tokio::task::spawn_blocking(move || manager.load_model(&name_owned, None)).await;
+        match loaded {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
                 return VarlinkReply::err(
                     "io.syntrop.Runtime1.GenerationFailed",
                     Some(json!({ "reason": e.to_string() })),
+                )
+            }
+            Err(e) => {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": format!("loader failed: {e}") })),
+                )
+            }
+        }
+        let entry = match self.model_manager.get_entry(model_name) {
+            Some(e) => e,
+            None => {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": "model vanished after load" })),
                 )
             }
         };
@@ -116,9 +160,25 @@ impl Runtime1Handler {
             prompt: prompt.to_string(),
             max_tokens,
             temperature,
+            top_k,
+            top_p,
+            seed,
+            image_base64,
         };
 
-        match generate_tokens(&model, &request) {
+        // Generation is synchronous CPU work; run it off the async executor.
+        let entry_task = Arc::clone(&entry);
+        let output = tokio::task::spawn_blocking(move || generate_tokens(&entry_task, &request)).await;
+        let output = match output {
+            Ok(o) => o,
+            Err(e) => {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": format!("worker failed: {e}") })),
+                )
+            }
+        };
+        match output {
             Ok(result) => VarlinkReply::ok(json!({ "result": result })),
             Err(e) => VarlinkReply::err(
                 "io.syntrop.Runtime1.GenerationFailed",

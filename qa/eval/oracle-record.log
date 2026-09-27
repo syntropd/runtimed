@@ -1,0 +1,28 @@
+creating syntrop-oracle-qwen05 ...
+creating syntrop-oracle-e2b ...
+recorded text count-r
+recorded text capital-fr
+recorded text math-17x23
+recorded text rust-add
+recorded text primary-colors
+recorded text summarize-cat
+recorded text translate-hello
+recorded text largest-planet
+recorded text math-precedence
+recorded text first-president
+recorded text reverse-abcde
+recorded text spider-legs
+recorded text proverb
+recorded text bonjour-lang
+recorded text math-100div4
+recorded text rhyme-cat
+recorded text json-valid
+recorded text spell-necessary
+recorded text boiling-point
+recorded text haiku-rust
+skip vision red-square-color: HTTP Error 400: Bad Request
+skip vision shapes-count: HTTP Error 400: Bad Request
+skip vision shapes-describe: HTTP Error 400: Bad Request
+skip vision circle-color: HTTP Error 400: Bad Request
+skip vision gradient-describe: HTTP Error 400: Bad Request
+done

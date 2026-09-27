@@ -1,9 +1,9 @@
-//! Scalar dequantization to `f32`, ported from ggml's reference routines.
+//! Scalar dequantization to `f32`: passthrough, Q8_0, and the dispatcher.
 //!
-//! Only what the engine needs: F32/F16 passthrough, Q8_0, Q4_K.
-//! Reference: `dequantize_row_q8_0`, `dequantize_row_q4_K`,
-//! `get_scale_min_k4` in ggml's `src/ggml-quants.c`.
+//! K-quant block decoders live in [`crate::dequant_k`]. Ported from ggml's
+//! `src/ggml-quants.c`; block layouts in `src/ggml-common.h`.
 
+use crate::dequant_k::{dequant_q4_k_block, dequant_q5_k_block, dequant_q6_k_block};
 use crate::dtype::GgmlDtype;
 use crate::error::{GgufError, Result};
 
@@ -32,7 +32,7 @@ pub fn f16_to_f32(bits: u16) -> f32 {
     f32::from_bits(out)
 }
 
-fn read_f16(bytes: &[u8]) -> f32 {
+pub(crate) fn read_f16(bytes: &[u8]) -> f32 {
     f16_to_f32(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
@@ -46,44 +46,6 @@ pub fn dequant_q8_0_block(block: &[u8]) -> [f32; 32] {
     out
 }
 
-/// Scale/min pair `j` (0..8) from a Q4_K super-block's 12 scale bytes.
-fn scale_min_k4(j: usize, scales: &[u8]) -> (u8, u8) {
-    if j < 4 {
-        (scales[j] & 63, scales[j + 4] & 63)
-    } else {
-        let sc = (scales[j + 4] & 0xF) | ((scales[j - 4] >> 6) << 4);
-        let m = (scales[j + 4] >> 4) | ((scales[j] >> 6) << 4);
-        (sc, m)
-    }
-}
-
-/// One Q4_K super-block (144 bytes) → 256 floats.
-pub fn dequant_q4_k_block(block: &[u8]) -> [f32; 256] {
-    let d = read_f16(&block[0..2]);
-    let min = read_f16(&block[2..4]);
-    let scales = &block[4..16];
-    let qs = &block[16..144];
-    let mut out = [0.0f32; 256];
-    let mut o = 0;
-    let mut is = 0;
-    for chunk in 0..4 {
-        let q = &qs[chunk * 32..chunk * 32 + 32];
-        let (sc, m) = scale_min_k4(is, scales);
-        let (d1, m1) = (d * sc as f32, min * m as f32);
-        let (sc, m) = scale_min_k4(is + 1, scales);
-        let (d2, m2) = (d * sc as f32, min * m as f32);
-        for l in 0..32 {
-            out[o] = d1 * (q[l] & 0xF) as f32 - m1;
-            o += 1;
-        }
-        for l in 0..32 {
-            out[o] = d2 * (q[l] >> 4) as f32 - m2;
-            o += 1;
-        }
-        is += 2;
-    }
-    out
-}
 
 /// Whole-tensor decode. `n_elements` must be an exact block multiple.
 pub fn dequant_tensor(dtype: GgmlDtype, bytes: &[u8], n_elements: usize) -> Result<Vec<f32>> {
@@ -126,6 +88,16 @@ pub fn dequant_tensor(dtype: GgmlDtype, bytes: &[u8], n_elements: usize) -> Resu
                 out.extend_from_slice(&dequant_q4_k_block(b));
             }
         }
+        GgmlDtype::Q5K => {
+            for b in bytes[..need].chunks_exact(176) {
+                out.extend_from_slice(&dequant_q5_k_block(b));
+            }
+        }
+        GgmlDtype::Q6K => {
+            for b in bytes[..need].chunks_exact(210) {
+                out.extend_from_slice(&dequant_q6_k_block(b));
+            }
+        }
         other => return Err(GgufError::Unsupported(other)),
     }
     Ok(out)
@@ -154,17 +126,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn q4_k_nibbles_and_high_bits() {
-        // d = 1.0, dmin = 0.0, scales[0] carries high bits for group 4.
-        let mut block = vec![0x00, 0x3C, 0x00, 0x00];
-        block.extend([65u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
-        block.extend([0x11u8; 128]); // low nibble 1, high nibble 1
-        let out = dequant_q4_k_block(&block);
-        assert_eq!(out.len(), 256);
-        assert!(out[0..32].iter().all(|&v| v == 1.0));
-        assert!(out[32..64].iter().all(|&v| v == 1.0));
-        // group 4: sc = (1 & 0xF) | ((65 >> 6) << 4) = 17
-        assert!(out[128..160].iter().all(|&v| v == 17.0));
-    }
 }

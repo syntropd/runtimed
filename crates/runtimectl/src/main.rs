@@ -17,8 +17,18 @@ async fn main() -> Result<()> {
             model,
             max_tokens,
             temperature,
+            top_k,
+            top_p,
+            seed,
+            image,
         } => {
-            exec_generate(&client, &model, &prompt, max_tokens, temperature, cli.json).await?;
+            exec_generate(&client, &model, &prompt, max_tokens, temperature, top_k, top_p, seed, image.as_deref(), cli.json).await?;
+        }
+        Commands::AttachVision { model, mmproj } => {
+            exec_attach_vision(&client, &model, &mmproj, cli.json).await?;
+        }
+        Commands::AttachLora { model, lora } => {
+            exec_attach_lora(&client, &model, &lora, cli.json).await?;
         }
         Commands::Embed { text, model } => {
             exec_embed(&client, &model, &text, cli.json).await?;
@@ -31,6 +41,9 @@ async fn main() -> Result<()> {
         }
         Commands::List => {
             exec_list(&client, cli.json).await?;
+        }
+        Commands::Load => {
+            exec_load(&client, cli.json).await?;
         }
         Commands::Info => {
             exec_info(&client, cli.json).await?;

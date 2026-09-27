@@ -5,6 +5,9 @@ pub mod protocol;
 pub mod runtime1;
 pub mod server;
 pub mod service;
+pub mod load_report;
+pub mod lora_attach;
+pub mod vision_attach;
 
 pub use auth::{lookup_group, TrustedGroup, UNRESOLVED_GID};
 pub use protocol::{VarlinkCall, VarlinkReply};

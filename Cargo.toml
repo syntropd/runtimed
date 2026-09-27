@@ -2,6 +2,7 @@
 members = [
     "crates/runtimed-core",
     "crates/runtimed-gguf",
+    "crates/runtimed-model",
     "crates/runtimed-daemon",
     "crates/runtimectl",
     "qa/unit",
@@ -10,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.80.0"
 license = "Apache-2.0"
@@ -19,6 +20,9 @@ repository = "https://github.com/syntropd/runtimed"
 
 [workspace.dependencies]
 anyhow = "1.0.86"
+base64 = "0.22"
+candle-core = "0.11"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 clap = { version = "4.5.13", features = ["derive", "env"] }
 clap_complete = "4.5.13"
 libc = "0.2.155"
@@ -29,6 +33,7 @@ rustix = { version = "0.38.34", features = ["fs", "net", "process", "param", "ev
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
 tempfile = "3.10.1"
+tokenizers = "0.22"
 thiserror = "1.0.63"
 tokio = { version = "1.39.2", features = ["full"] }
 toml = "0.8.19"

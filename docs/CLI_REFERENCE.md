@@ -15,12 +15,18 @@
 Sample text completions from a prompt.
 
 ```bash
-runtimectl generate <PROMPT> [--model <MODEL>] [--max-tokens <N>] [--temperature <FLOAT>] [--json]
+runtimectl generate <PROMPT> [--model <MODEL>] [--max-tokens <N>] [--temperature <FLOAT>] [--top-k <K>] [--top-p <P>] [--seed <S>] [--image <PATH>] [--json]
 ```
 
 Example:
 ```bash
 runtimectl generate "Analyze root cause of failed nginx worker" --max-tokens 128
+```
+
+Multimodal example (needs `attach-vision` first):
+```bash
+runtimectl attach-vision <MODEL> /var/lib/models/gguf/mmproj-E2B-F16.gguf
+runtimectl generate "What color is the square?" --image red-square.png --max-tokens 64
 ```
 
 ### 2. `embed`

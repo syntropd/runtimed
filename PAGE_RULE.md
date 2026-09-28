@@ -67,9 +67,12 @@ red pages fail the build. No exemption lists. No padding.
 | `heat_pct` | share of CPU samples under the QA workloads        | sampler + debuginfo (approx) |
 | `reach`    | other pages referencing it (blast radius)          | grep (approx)                |
 
-Approximate fields carry their method in the report's `notes`. A
-snapshot ships per release; a change may not grow a page's weight or
-heat without a written reason in the commit message.
+Approximate fields carry their method in the report's `notes`:
+shared file names match qualified by ancestor directory for `reach`;
+`bin_bytes` scans workspace libraries only, never attributes foreign
+paths, and excludes shims. A snapshot ships per release; validate it
+with `qa/page_score_check.sh` before shipping. A change may not grow
+a page's weight or heat without a written reason in the commit message.
 
 ## Enforcement
 

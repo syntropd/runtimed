@@ -35,14 +35,30 @@ while IFS= read -r f; do
 done < "$TMP/pages.txt"
 
 # ---- reach: files referencing each page's module stem (approx) ----
+# A bare stem over-counts when several pages share a file name (every
+# error.rs claims every error:: reference). Shared stems must match
+# qualified by an ancestor directory (bus::error, or dbus::error via a
+# re-export); relative references from the same directory
+# (super::/self::/bare stem) still count, since those resolve to that
+# directory's page. Unique stems match bare.
+awk -F/ '{b=$NF; sub(/\.rs$/,"",b); print b}' "$TMP/pages.txt" | sort | uniq -c > "$TMP/stemcounts.txt"
+declare -A STEMCOUNT
+while read -r c s; do STEMCOUNT[$s]=$c; done < "$TMP/stemcounts.txt"
 : > "$TMP/reach.tsv"
 while IFS= read -r f; do
   stem="$(basename "$f" .rs)"
-  n=$(grep -rl --include='*.rs' -E "(^|[^A-Za-z0-9_])${stem}::|use [^;]*${stem}[ ;]" . 2>/dev/null | grep -v target | grep -v "^${f}$" | wc -l)
+  dir="$(dirname "$f")"
+  if [ "${STEMCOUNT[$stem]:-1}" -gt 1 ] && [ "$dir" != "." ]; then
+    anc="$(echo "$dir" | tr '/' '\n' | grep -v '^\.$' | grep -v '^$' | paste -sd'|')"
+    n=$({ grep -rl --include='*.rs' -E "(^|[^A-Za-z0-9_])(${anc})::${stem}(::|[ ;])|use [^;]*(${anc})::${stem}[ ;]" . 2>/dev/null | grep -v target;
+          grep -rl --include='*.rs' -E "(^|[^A-Za-z0-9_])${stem}::|use [^;]*${stem}[ ;]|(super|self)::${stem}([^A-Za-z0-9_]|$)" "$dir" 2>/dev/null; } | sort -u | grep -v "^${f}$" | wc -l)
+  else
+    n=$(grep -rl --include='*.rs' -E "(^|[^A-Za-z0-9_])${stem}::|use [^;]*${stem}[ ;]" . 2>/dev/null | grep -v target | grep -v "^${f}$" | wc -l)
+  fi
   printf '%s\t%s\n' "$f" "$n" >> "$TMP/reach.tsv"
 done < "$TMP/pages.txt"
 
-NOTES=""
+NOTES="reach counts referencing files (shared file names qualified by ancestor dir);"
 # ---- bin_bytes: .text sizes per source file via nm (approx) ----
 : > "$TMP/bin.tsv"
 if [ "$WANT_BIN" = 1 ]; then
@@ -52,31 +68,80 @@ if [ "$WANT_BIN" = 1 ]; then
     NOTES="$NOTES bin_bytes unavailable (build failed);"
   else
     : > "$TMP/nm.tsv"
-    # Newest rlib per crate only (stale hashes and package-verify copies out).
-    for rlib in $(ls -t target/debug/deps/*.rlib 2>/dev/null | awk -F'[-.]' '{k=""; for(i=1;i<NF-1;i++) k=k $i "-"; if (!seen[k]++) print}'); do
+    # Workspace-member rlibs only: dependency rlibs carry foreign code that
+    # must never land on repo pages. Falls back to all rlibs if metadata
+    # is unavailable.
+    MEMBERS="$(cargo metadata --format-version 1 --offline --no-deps 2>/dev/null | python3 -c "
+import json,sys,os
+tmp = sys.argv[1]
+try: m = json.load(sys.stdin)
+except Exception: raise SystemExit
+names = set()
+pkgdirs = open(tmp + '/pkgdirs.tsv', 'w')
+root = os.getcwd()
+for p in m.get('packages', []):
+    d = os.path.relpath(os.path.dirname(p['manifest_path']), root)
+    pkgdirs.write(p['name'] + '\t' + ('./' if d == '.' else './' + d) + '\n')
+    for t in p.get('targets', []):
+        # 'lib' is cargo's word for the default rlib output.
+        if set(t.get('crate_types', [])) & {'lib', 'rlib', 'dylib', 'staticlib'}:
+            names.add(t['name'].replace('-', '_'))
+print(' '.join(sorted(names)))" "$TMP")"
+    if [ -n "$MEMBERS" ]; then
+      MEMBER_RE="/lib($(echo "$MEMBERS" | tr ' ' '|'))-[0-9a-f]+\.rlib$"
+      RLIBS="$(ls -t target/debug/deps/*.rlib 2>/dev/null | grep -E "$MEMBER_RE")"
+    else
+      NOTES="$NOTES bin rlib filter off (no cargo metadata);"
+      RLIBS="$(ls -t target/debug/deps/*.rlib 2>/dev/null)"
+    fi
+    # One rlib per crate: newest first that was actually built from this
+    # repo's sources (deps/ and registry-built same-name rlibs exist from
+    # release debris; recency alone picks the wrong file).
+    declare -A SEEN_CRATE
+    for rlib in $RLIBS; do
       [ -f "$rlib" ] || continue
-      nm --print-size --line-numbers "$rlib" 2>/dev/null | awk '
-        / [TtWw] / {
-          size = strtonum("0x" $2)
-          loc = $NF
-          sub(/:[0-9]+$/, "", loc)
-          if (loc != "" && loc != "??") print loc "\t" size
-        }' >> "$TMP/nm.tsv"
+      key="$(echo "$rlib" | awk -F'[-.]' '{k=""; for(i=1;i<NF-1;i++) k=k $i "-"; print k}')"
+      [ -n "${SEEN_CRATE[$key]:-}" ] && continue
+      if nm --print-size --line-numbers "$rlib" 2>/dev/null | grep -q -E -e "$ROOT" -e '/target/package/'; then
+        SEEN_CRATE[$key]=1
+        nm --print-size --line-numbers "$rlib" 2>/dev/null | awk '
+          / [TtWw] / {
+            size = strtonum("0x" $2)
+            loc = $NF
+            sub(/:[0-9]+$/, "", loc)
+            if (loc != "" && loc != "??") print loc "\t" size
+          }' >> "$TMP/nm.tsv"
+      fi
     done
-    # Map nm paths onto repo pages; packaged-copy paths (target/package)
-    # match by relative path; other strays match by unique basename only.
+    # Map nm paths onto repo pages. Packaged-copy paths (target/package)
+    # resolve through the cargo package->dir map, since member dirs don't
+    # match package names. Absolute paths outside the repo (dependency
+    # sources, std) are NEVER basename-matched: that used to dump foreign
+    # lib.rs/mod.rs code onto same-named repo pages. Only relative strays
+    # match by unique basename.
+    [ -f "$TMP/pkgdirs.tsv" ] || : > "$TMP/pkgdirs.tsv"
     awk -v root="$ROOT" '
-      NR == FNR { pages[$1] = 1; base[$1] = $1; sub(/.*\//, "", base[$1]); count[base[$1]]++; next }
+      FILENAME == ARGV[1] { pages[$1] = 1; base[$1] = $1; sub(/.*\//, "", base[$1]); count[base[$1]]++; next }
+      FILENAME == ARGV[2] { pkgdir[$1] = $2; next }
       {
         loc = $1; size = $2
-        if (index(loc, root) == 1) { loc = substr(loc, length(root) + 2); if (loc !~ /^\.\//) loc = "./" loc }
-        else if (match(loc, /\/target\/package\/[^\/]+\//)) { loc = "./" substr(loc, RSTART + RLENGTH) }
+        if (match(loc, /\/target\/package\/[^\/]+\//)) {
+          seg = substr(loc, RSTART, RLENGTH)
+          sub(/^\/target\/package\//, "", seg); sub(/\/$/, "", seg)
+          sub(/-[0-9][0-9A-Za-z.+-]*$/, "", seg)
+          rest = substr(loc, RSTART + RLENGTH)
+          if (seg in pkgdir) loc = pkgdir[seg] "/" rest
+          else loc = "./" rest
+          gsub(/\/+/, "/", loc)
+        }
+        else if (index(loc, root) == 1) { loc = substr(loc, length(root) + 2); if (loc !~ /^\.\//) loc = "./" loc }
+        else if (loc ~ /^\// || loc ~ /\.\./) next
         else { b = loc; sub(/.*\//, "", b); if (count[b] == 1) { for (p in pages) if (base[p] == b) { loc = p; break } } else next }
         if (loc in pages) bytes[loc] += size
       }
       END { for (p in bytes) print p "\t" bytes[p] }
-    ' "$TMP/pages.txt" "$TMP/nm.tsv" > "$TMP/bin.tsv"
-    NOTES="$NOTES bin_bytes from newest dev rlib per crate via nm (inlining approx, bins re-link the same code);"
+    ' "$TMP/pages.txt" "$TMP/pkgdirs.tsv" "$TMP/nm.tsv" > "$TMP/bin.tsv"
+    NOTES="$NOTES bin_bytes from newest workspace dev rlib per crate via nm (inlining approx, bins re-link the same code; shims excluded, foreign paths never attributed);"
   fi
 fi
 
@@ -158,6 +223,22 @@ def tsv(name):
         pass
     return d
 lines, reach, bins, heat = tsv("lines.tsv"), tsv("reach.tsv"), tsv("bin.tsv"), tsv("heat.tsv")
+def is_shim(path):
+    # Same mechanical rule as PAGE_RULE.md: only mod/use/pub lines remain
+    # after dropping blanks, comments, and attributes. Shims declare no
+    # code, so any binary attribution to them is noise.
+    try:
+        with open(path) as f:
+            for raw in f:
+                s = raw.strip()
+                if not s or s.startswith("//") or s.startswith("#["):
+                    continue
+                if not (s.startswith("mod ") or s.startswith("use ")
+                        or s.startswith("pub")):
+                    return False
+        return True
+    except OSError:
+        return False
 import subprocess
 rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 dirty = bool(subprocess.run(["git", "status", "--short"], capture_output=True, text=True).stdout.strip())
@@ -169,7 +250,7 @@ with open(f"{tmp}/pages.txt") as f:
         pages.append({
             "path": p,
             "lines": int(lines.get(p, 0)),
-            "bin_bytes": int(bins[p]) if p in bins else None,
+            "bin_bytes": None if is_shim(p) else (int(bins[p]) if p in bins else None),
             "heat_pct": float(heat[p]) if p in heat else None,
             "reach": int(reach.get(p, 0)),
         })

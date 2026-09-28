@@ -1,5 +1,6 @@
 //! Model definitions, descriptors, and lifecycle management.
 
+pub mod admit_lease;
 pub mod attach;
 pub mod loader;
 pub mod meta;

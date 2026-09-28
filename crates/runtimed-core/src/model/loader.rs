@@ -5,13 +5,14 @@
 //! `Arc` until unloaded. Metadata served over Varlink is the plain
 //! `LoadedModel`; generation uses the live `EngineEntry`.
 
+use super::admit_lease::LeasePermit;
 use super::meta::{EngineEntry, LoadedModel};
 use super::resolve::{load_registry, resolve_path};
 use super::tokenizer::EngineTokenizer;
 use crate::error::RuntimedError;
 use candle_core::Device;
-use runtimed_gguf::{GgufBpe, MetaValue, Registry, Tokenizer};
-use runtimed_model::{Arch, Session};
+use runtimed_gguf::Registry;
+use runtimed_model::Session;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
@@ -20,6 +21,8 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 pub struct ModelManager {
     models_dir: PathBuf,
     active_models: RwLock<HashMap<String, Arc<EngineEntry>>>,
+    /// Inferenced leases held per resident model (own lock; see admit_lease).
+    pub(super) leases: Mutex<HashMap<String, LeasePermit>>,
     /// SHA256 pins from `registry.toml` at the models root or its
     /// `gguf/` subdir (R2). `None` means no registry file: loads
     /// proceed unenforced (fail-open, logged).
@@ -36,6 +39,7 @@ impl ModelManager {
         Self {
             models_dir,
             active_models: RwLock::new(HashMap::new()),
+            leases: Mutex::new(HashMap::new()),
             registry,
             registry_error,
         }
@@ -108,33 +112,14 @@ impl ModelManager {
                 )));
             }
         };
-        let (session, file) =
-            Session::load(&path, &device).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+        self.admit(name, &path)?;
+        let (session, file) = Session::load(&path, &device).map_err(|e| {
+            self.relinquish(name);
+            RuntimedError::GenerationFailed(e.to_string())
+        })?;
         let arch_tag = file.meta_str("general.architecture").unwrap_or("?");
-        let (tokenizer, eos, add_special) = match session.config().arch {
-            Arch::Gemma4 => {
-                let bpe = GgufBpe::from_gguf(&file)
-                    .map_err(|e| RuntimedError::GenerationFailed(format!("bpe: {e}")))?;
-                let eos = bpe.eos_id().into_iter().collect();
-                let add_special = bpe.wants_bos();
-                (EngineTokenizer::Bpe(bpe), eos, add_special)
-            }
-            Arch::Qwen2 => {
-                let tok_path = path.with_extension("tokenizer.json");
-                let tok = Tokenizer::from_file(&tok_path).map_err(|_| {
-                    RuntimedError::GenerationFailed(format!(
-                        "qwen2 needs a sibling tokenizer.json next to {}",
-                        path.display()
-                    ))
-                })?;
-                let eos = super::meta::meta_u32(&file, "tokenizer.ggml.eos_token_id")
-                    .into_iter()
-                    .collect();
-                let add_special =
-                    matches!(file.metadata.get("tokenizer.ggml.add_bos_token"), Some(MetaValue::Bool(true)));
-                (EngineTokenizer::File(tok), eos, add_special)
-            }
-        };
+        let (tokenizer, eos, add_special) =
+            EngineTokenizer::load_for_arch(session.config().arch, &file, &path)?;
         let params: u64 = file.tensors.iter().map(|t| t.n_elements as u64).sum();
         let context = super::meta::meta_u32(&file, &format!("{arch_tag}.context_length"))
             .map(|c| c as usize)
@@ -209,6 +194,7 @@ impl ModelManager {
                     let _ = runtimed_model::weights::Weights::ensure_current(session.device());
                 }
                 tracing::info!(model = %entry.meta.name, "unload");
+                self.relinquish(name);
                 Ok(entry.meta.memory_bytes)
             }
             None => Err(RuntimedError::ModelNotFound(name.to_string())),

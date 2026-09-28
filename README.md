@@ -48,9 +48,9 @@ From the release bundle (no Rust needed):
 
 ```bash
 curl -fSL -o runtimed.tar.gz \
-  https://github.com/syntropd/runtimed/releases/download/v0.5.0/runtimed-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
+  https://github.com/syntropd/runtimed/releases/download/v0.5.3/runtimed-v0.5.3-x86_64-unknown-linux-gnu.tar.gz
 tar xzf runtimed.tar.gz
-cd runtimed-v0.5.0
+cd runtimed-v0.5.3
 sudo bash install/install.sh --from-bundle bin
 ```
 

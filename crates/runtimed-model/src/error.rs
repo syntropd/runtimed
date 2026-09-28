@@ -25,3 +25,19 @@ pub enum ModelError {
 }
 
 pub type Result<T> = std::result::Result<T, ModelError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn displays_cover_variants() {
+        assert!(ModelError::Arch("x".into()).to_string().contains("unsupported architecture"));
+        assert!(ModelError::Config("x".into()).to_string().contains("bad config"));
+        assert!(ModelError::MissingWeight("w".into()).to_string().contains("missing weight"));
+        assert!(ModelError::Shape { name: "w".into(), expected: vec![1], got: vec![2] }
+            .to_string()
+            .contains("shape mismatch"));
+        assert!(ModelError::Tokenizer("x".into()).to_string().contains("tokenizer"));
+    }
+}

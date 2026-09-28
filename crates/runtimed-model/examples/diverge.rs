@@ -1,7 +1,8 @@
 //! Debug probe: top-5 logits per position for one oracle prompt.
 use candle_core::Device;
 use runtimed_gguf::{MetaValue, Tokenizer};
-use runtimed_model::{generate, sample};
+use runtimed_model::decode::sample;
+use runtimed_model::generate;
 
 fn main() {
     let id = std::env::args().nth(1).expect("usage: diverge <prompt-id> [n]");
@@ -41,7 +42,7 @@ fn main() {
     let mut ctx = prompt.clone();
     ctx.extend_from_slice(&want_ids[..div]);
     let logits = model.forward(&ctx, 0).unwrap();
-    let row = runtimed_model::generate::last_row(&logits).unwrap().to_vec1::<f32>().unwrap();
+    let row = runtimed_model::decode::generate::last_row(&logits).unwrap().to_vec1::<f32>().unwrap();
     let mut idx: Vec<usize> = (0..row.len()).collect();
     idx.sort_unstable_by(|&a, &b| row[b].total_cmp(&row[a]));
     println!("top-5 at div: {:?}", idx[..5].iter().map(|&i| (i, row[i])).collect::<Vec<_>>());

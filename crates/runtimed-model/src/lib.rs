@@ -4,25 +4,19 @@
 //! decoded by `runtimed-gguf`, every op (norm, RoPE, attention, MLP) written
 //! out explicitly. Candle provides matmul/softmax/transpose only.
 
-pub mod chat;
+pub mod arch;
 pub mod config;
-pub mod lora;
+pub mod decode;
 pub mod error;
-pub mod gemma4;
-pub mod generate;
+pub mod lora;
 pub mod ops;
-pub mod qwen2;
-pub mod sample;
-pub mod session;
 pub mod vision;
-pub mod vpre;
-pub mod vresize;
 pub mod weights;
 
 pub use config::{Activation, Arch, ArchConfig, LayerConfig};
+pub use decode::generate::generate;
+pub use decode::session::Session;
 pub use error::{ModelError, Result};
-pub use generate::generate;
-pub use session::Session;
+pub use lora::LoraAdapter;
 pub use vision::{PreparedImage, VisionTower};
 pub use weights::Weights;
-pub use lora::LoraAdapter;

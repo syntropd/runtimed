@@ -59,12 +59,12 @@ fn cuda_storage_is_f16_with_matching_greedy() {
     let prompt = vec![2u32, 105, 9731, 107, 98, 107, 106, 107, 105, 2364, 107];
     let (mut cpu, _) = Session::load(&path, &Device::Cpu).unwrap();
     gpu.reset();
-    let grow = runtimed_model::generate::last_row(&gpu.forward(&prompt, 0).unwrap())
+    let grow = runtimed_model::decode::generate::last_row(&gpu.forward(&prompt, 0).unwrap())
         .unwrap()
         .to_vec1::<f32>()
         .unwrap();
     cpu.reset();
-    let crow = runtimed_model::generate::last_row(&cpu.forward(&prompt, 0).unwrap())
+    let crow = runtimed_model::decode::generate::last_row(&cpu.forward(&prompt, 0).unwrap())
         .unwrap()
         .to_vec1::<f32>()
         .unwrap();

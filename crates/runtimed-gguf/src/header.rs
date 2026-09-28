@@ -4,7 +4,7 @@
 //! then metadata entries, tensor infos, then tensor data starting at the
 //! `general.alignment` boundary (default 32). Little-endian throughout.
 
-use crate::dtype::GgmlDtype;
+use crate::quant::dtype::GgmlDtype;
 use crate::error::{GgufError, Result};
 use memmap2::Mmap;
 use std::collections::HashMap;
@@ -202,7 +202,7 @@ impl GgufFile {
     /// Decode a whole tensor to `f32`.
     pub fn tensor_f32(&self, info: &TensorInfo) -> Result<Vec<f32>> {
         let bytes = self.tensor_bytes(info)?;
-        crate::dequant::dequant_tensor(info.dtype, bytes, info.n_elements)
+        crate::quant::dequant::dequant_tensor(info.dtype, bytes, info.n_elements)
     }
 
     pub fn meta_str(&self, key: &str) -> Option<&str> {
@@ -210,5 +210,29 @@ impl GgufFile {
             Some(MetaValue::Str(s)) => Some(s),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("runtimed-gguf-test-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn open_missing_file_errors() {
+        let err = GgufFile::open(&scratch("no-such.gguf")).err().expect("must fail");
+        assert!(err.is_missing(), "{err:?}");
+    }
+
+    #[test]
+    fn open_non_gguf_rejects_bad_magic() {
+        let path = scratch("bad-magic.gguf");
+        std::fs::write(&path, b"not-a-gguf-file-payload").unwrap();
+        let err = GgufFile::open(&path).err().expect("must fail");
+        let _ = std::fs::remove_file(&path);
+        assert!(matches!(err, GgufError::BadMagic), "{err:?}");
     }
 }

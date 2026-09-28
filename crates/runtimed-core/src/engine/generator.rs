@@ -4,7 +4,8 @@ use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
 use crate::model::tokenizer::EngineTokenizer;
 use super::mm;
-use runtimed_model::{chat, generate, sample};
+use runtimed_model::decode::{chat, sample};
+use runtimed_model::generate;
 use serde::{Deserialize, Serialize};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -178,6 +179,35 @@ mod tests {
             return None;
         }
         Some(path)
+    }
+
+    #[test]
+    fn rng_is_deterministic_per_seed() {
+        let mut a = Rng(42);
+        let mut b = Rng(42);
+        for _ in 0..8 {
+            assert_eq!(a.next_f32(), b.next_f32());
+        }
+        let mut c = Rng(42);
+        let (x, y) = (c.next_f32(), c.next_f32());
+        assert!((0.0..1.0).contains(&x) && (0.0..1.0).contains(&y));
+    }
+
+    #[test]
+    fn entropy_seed_is_odd() {
+        assert_eq!(entropy_seed() & 1, 1);
+    }
+
+    #[test]
+    fn request_serde_applies_sampler_defaults() {
+        let req: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "model": "m", "prompt": "p", "max_tokens": 8, "temperature": 0.0
+        }))
+        .unwrap();
+        assert_eq!(req.top_p, 1.0);
+        assert_eq!(req.top_k, 0);
+        assert_eq!(req.seed, 0);
+        assert_eq!(req.image_base64, None);
     }
 
     #[test]

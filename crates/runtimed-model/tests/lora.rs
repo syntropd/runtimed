@@ -132,7 +132,7 @@ fn fusion_shifts_logits_deterministically() {
     let prompt = vec![2u32, 105, 9731, 107, 98, 107, 106, 107, 105, 2364, 107];
     model.reset();
     let base = model.forward(&prompt, 0).unwrap();
-    let base_row = runtimed_model::generate::last_row(&base).unwrap().to_vec1::<f32>().unwrap();
+    let base_row = runtimed_model::decode::generate::last_row(&base).unwrap().to_vec1::<f32>().unwrap();
     // Rank-2 adapter on two linears (E2B row-major: q [2048,1536], down [1536,6144]).
     let p = tmp("fuse");
     forge(
@@ -151,7 +151,7 @@ fn fusion_shifts_logits_deterministically() {
     std::fs::remove_file(&p).unwrap();
     model.reset();
     let lora = model.forward(&prompt, 0).unwrap();
-    let lora_row = runtimed_model::generate::last_row(&lora).unwrap().to_vec1::<f32>().unwrap();
+    let lora_row = runtimed_model::decode::generate::last_row(&lora).unwrap().to_vec1::<f32>().unwrap();
     let maxdiff = base_row.iter().zip(lora_row.iter()).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
     assert!(maxdiff > 1e-6, "fusion had no effect (maxdiff {maxdiff})");
     assert!(maxdiff < 5.0, "fusion exploded (maxdiff {maxdiff})");
@@ -159,6 +159,6 @@ fn fusion_shifts_logits_deterministically() {
     // Determinism: same weights, same prompt -> identical row.
     model.reset();
     let again = model.forward(&prompt, 0).unwrap();
-    let again_row = runtimed_model::generate::last_row(&again).unwrap().to_vec1::<f32>().unwrap();
+    let again_row = runtimed_model::decode::generate::last_row(&again).unwrap().to_vec1::<f32>().unwrap();
     assert_eq!(lora_row, again_row);
 }

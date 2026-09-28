@@ -24,7 +24,7 @@ pub enum GgufError {
     Overflow(String),
 
     #[error("decode of {0:?} not implemented")]
-    Unsupported(super::dtype::GgmlDtype),
+    Unsupported(crate::quant::dtype::GgmlDtype),
 
     #[error("hash mismatch for {0}: want {1}, got {2}")]
     Hash(String, String, String),
@@ -43,5 +43,19 @@ impl GgufError {
     /// treating corrupt content as an error).
     pub fn is_missing(&self) -> bool {
         matches!(self, Self::Io(e) if e.kind() == std::io::ErrorKind::NotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_classifies_not_found_only() {
+        let nf = GgufError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "x"));
+        assert!(nf.is_missing());
+        let denied = GgufError::Io(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "x"));
+        assert!(!denied.is_missing());
+        assert!(!GgufError::BadMagic.is_missing());
     }
 }

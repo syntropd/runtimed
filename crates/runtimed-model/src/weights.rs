@@ -172,3 +172,13 @@ impl Weights {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_device_is_always_current() {
+        assert!(Weights::ensure_current(&Device::Cpu).is_ok());
+    }
+}

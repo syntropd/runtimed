@@ -1,16 +1,10 @@
 //! Varlink protocol definitions and server implementation for runtimed.
 
-pub mod auth;
-pub mod protocol;
-pub mod runtime1;
+pub mod methods;
 pub mod server;
-pub mod service;
-pub mod load_report;
-pub mod lora_attach;
-pub mod vision_attach;
 
-pub use auth::{lookup_group, TrustedGroup, UNRESOLVED_GID};
-pub use protocol::{VarlinkCall, VarlinkReply};
-pub use runtime1::Runtime1Handler;
-pub use server::{handle_client, VarlinkServer, MAX_MSG_BYTES};
-pub use service::{handle_service_call, IO_SYNTROP_RUNTIME1_INTERFACE};
+pub use methods::runtime1::Runtime1Handler;
+pub use methods::service::{handle_service_call, IO_SYNTROP_RUNTIME1_INTERFACE};
+pub use server::auth::{lookup_group, TrustedGroup, UNRESOLVED_GID};
+pub use server::protocol::{VarlinkCall, VarlinkReply};
+pub use server::server::{handle_client, VarlinkServer, MAX_MSG_BYTES};

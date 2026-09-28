@@ -49,6 +49,29 @@ mod tests {
     }
 
     #[test]
+    fn test_attach_missing_model_returns_not_found() {
+        let tmp = tempdir().unwrap();
+        let manager = ModelManager::new(tmp.path());
+        match manager.attach_vision("ghost-model-xyz", "ghost-mmproj") {
+            Err(RuntimedError::ModelNotFound(n)) => assert_eq!(n, "ghost-model-xyz"),
+            other => panic!("expected ModelNotFound, got {other:?}"),
+        }
+        match manager.attach_lora("ghost-model-xyz", "ghost-lora") {
+            Err(RuntimedError::ModelNotFound(n)) => assert_eq!(n, "ghost-model-xyz"),
+            other => panic!("expected ModelNotFound, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_empty_manager_lists_nothing() {
+        let tmp = tempdir().unwrap();
+        let manager = ModelManager::new(tmp.path());
+        assert!(manager.get_entry("ghost-model-xyz").is_none());
+        assert!(manager.get_model("ghost-model-xyz").is_none());
+        assert!(manager.list_active().is_empty());
+    }
+
+    #[test]
     fn test_load_rejects_unknown_backend() {
         let Some((manager, name)) = gated() else { return };
         match manager.load_model(&name, Some("vulkan")) {

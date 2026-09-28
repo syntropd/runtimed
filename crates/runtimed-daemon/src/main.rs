@@ -151,3 +151,23 @@ fn bind_standalone(socket_path: &std::path::Path) -> Result<UnixListener> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn binds_standalone_socket_with_strict_mode() {
+        let path = std::env::temp_dir()
+            .join(format!("runtimed-test-{}-bind.sock", std::process::id()));
+        let _ = fs::remove_file(&path);
+        let listener = bind_standalone(&path).expect("bind");
+        drop(listener);
+        let mode =
+            std::os::unix::fs::MetadataExt::mode(&fs::metadata(&path).unwrap()) & 0o777;
+        assert_eq!(mode, 0o660);
+        // Second bind on the live inode fails instead of hijacking it.
+        assert!(bind_standalone(&path).is_err());
+        let _ = fs::remove_file(&path);
+    }
+}

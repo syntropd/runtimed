@@ -2,6 +2,7 @@
 
 pub mod runtimed_config;
 
-pub use runtimed_config::{
-    RuntimedConfig, DEFAULT_CONFIG_PATH, DEFAULT_MODELS_PATH, DEFAULT_SOCKET_PATH,
-};
+pub use runtimed_config::DEFAULT_CONFIG_PATH;
+pub use runtimed_config::DEFAULT_MODELS_PATH;
+pub use runtimed_config::DEFAULT_SOCKET_PATH;
+pub use runtimed_config::RuntimedConfig;

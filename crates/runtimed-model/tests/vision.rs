@@ -27,7 +27,7 @@
 use candle_core::Device;
 use runtimed_gguf::GgufBpe;
 use runtimed_model::vision::{prepare, VisionTower};
-use runtimed_model::{chat, generate, sample};
+use runtimed_model::decode::{chat, generate, sample};
 use serde::Deserialize;
 use std::path::PathBuf;
 

@@ -119,3 +119,58 @@ pub enum Commands {
         shell: Shell,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_list_with_defaults() {
+        let cli = Cli::try_parse_from(["runtimectl", "list"]).unwrap();
+        assert!(matches!(cli.command, Commands::List));
+        assert!(!cli.json);
+    }
+
+    #[test]
+    fn parses_generate_defaults() {
+        let cli = Cli::try_parse_from(["runtimectl", "generate", "hello"]).unwrap();
+        match cli.command {
+            Commands::Generate {
+                prompt,
+                model,
+                max_tokens,
+                temperature,
+                top_k,
+                top_p,
+                seed,
+                image,
+            } => {
+                assert_eq!(prompt, "hello");
+                assert_eq!(model, "qwen2.5-coder-7b");
+                assert_eq!(max_tokens, 256);
+                assert_eq!(temperature, 0.0);
+                assert_eq!(top_k, 0);
+                assert_eq!(top_p, 1.0);
+                assert_eq!(seed, 0);
+                assert_eq!(image, None);
+            }
+            other => panic!("expected Generate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_global_flags_and_completions() {
+        let cli = Cli::try_parse_from([
+            "runtimectl",
+            "--json",
+            "-s",
+            "/tmp/x.sock",
+            "completions",
+            "bash",
+        ])
+        .unwrap();
+        assert!(cli.json);
+        assert_eq!(cli.socket, PathBuf::from("/tmp/x.sock"));
+        assert!(matches!(cli.command, Commands::Completions { shell: Shell::Bash }));
+    }
+}

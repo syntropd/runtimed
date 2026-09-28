@@ -46,3 +46,50 @@ fn adopt_unix_listener(fd: RawFd) -> Option<UnixListener> {
         UnixListener::from_std(std_listener).ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = env::var(key).ok();
+            env::set_var(key, val);
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => env::set_var(self.key, v),
+                None => env::remove_var(self.key),
+            }
+        }
+    }
+
+    #[test]
+    fn pid_gating_never_adopts_unexpected_fds() {
+        // One function: LISTEN_* is process-global and must not be
+        // touched by parallel tests. LISTEN_FDS stays 0 whenever the
+        // pid matches, so fd 3 is never adopted (it belongs to us).
+        let _pid = EnvGuard::set("LISTEN_PID", "not-a-number");
+        let _fds = EnvGuard::set("LISTEN_FDS", "3");
+        assert!(parse_listen_fds().varlink_listener.is_none());
+
+        env::set_var("LISTEN_PID", std::process::id().wrapping_add(1).to_string());
+        assert!(parse_listen_fds().varlink_listener.is_none());
+
+        env::remove_var("LISTEN_PID");
+        assert!(parse_listen_fds().varlink_listener.is_none());
+
+        env::set_var("LISTEN_PID", std::process::id().to_string());
+        env::remove_var("LISTEN_FDS");
+        assert!(parse_listen_fds().varlink_listener.is_none());
+    }
+}

@@ -3,7 +3,7 @@
 use super::generator::{entropy_seed, GenerationRequest, GenerationResult, Rng};
 use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
-use runtimed_model::{chat, sample};
+use runtimed_model::decode::{chat, sample};
 use std::time::Instant;
 
 /// Largest accepted decoded image (32 MiB; the tower rejects junk after).
@@ -78,7 +78,7 @@ pub(super) fn generate_mm_tokens(
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
     let pad = bpe.pad_id();
-    let ids = runtimed_model::generate::generate_mm(
+    let ids = runtimed_model::decode::generate::generate_mm(
         &mut *session,
         &prompt_ids,
         &soft,

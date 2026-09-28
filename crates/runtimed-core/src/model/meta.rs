@@ -46,3 +46,23 @@ pub(super) fn meta_u32(file: &GgufFile, key: &str) -> Option<u32> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_model_serde_roundtrip() {
+        let meta = LoadedModel {
+            name: "m".into(),
+            architecture: "qwen2".into(),
+            parameter_count: 1,
+            memory_bytes: 2,
+            context_window: 3,
+            compute_backend: "cpu".into(),
+        };
+        let v = serde_json::to_value(&meta).unwrap();
+        assert_eq!(v["name"], "m");
+        assert_eq!(serde_json::from_value::<LoadedModel>(v).unwrap(), meta);
+    }
+}

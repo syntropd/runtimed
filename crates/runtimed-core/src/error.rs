@@ -38,3 +38,25 @@ pub enum RuntimedError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn displays_cover_variants() {
+        assert_eq!(
+            RuntimedError::ModelNotFound("m".into()).to_string(),
+            "Model 'm' not found or not loaded"
+        );
+        assert!(RuntimedError::ContextExceeded { max: 8, requested: 9 }
+            .to_string()
+            .contains("requested 9"));
+        assert!(RuntimedError::Preempted("x".into()).to_string().contains("pre-empted"));
+        assert!(RuntimedError::HardwareAllocation("x".into()).to_string().contains("Hardware"));
+        assert!(RuntimedError::GenerationFailed("x".into()).to_string().contains("Generation"));
+        assert!(RuntimedError::Config("x".into()).to_string().contains("Configuration"));
+        let io = RuntimedError::from(std::io::Error::new(std::io::ErrorKind::NotFound, "nf"));
+        assert!(io.to_string().contains("I/O error"));
+    }
+}

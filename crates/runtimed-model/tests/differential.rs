@@ -13,7 +13,8 @@
 
 use candle_core::Device;
 use runtimed_gguf::{GgufBpe, GgufFile, MetaValue, Tokenizer};
-use runtimed_model::{generate, sample};
+use runtimed_model::decode::{generate, sample};
+use runtimed_model::generate;
 use serde::Deserialize;
 use std::path::PathBuf;
 

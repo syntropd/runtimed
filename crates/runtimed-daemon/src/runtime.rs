@@ -87,3 +87,72 @@ pub async fn finish_shutdown(handle: JoinHandle<Result<()>>) {
     }
     notify_stopping();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct EnvGuard {
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn swap(val: Option<&str>) -> Self {
+            let prev = std::env::var("WATCHDOG_USEC").ok();
+            match val {
+                Some(v) => std::env::set_var("WATCHDOG_USEC", v),
+                None => std::env::remove_var("WATCHDOG_USEC"),
+            }
+            Self { prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => std::env::set_var("WATCHDOG_USEC", v),
+                None => std::env::remove_var("WATCHDOG_USEC"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn watchdog_interval_matrix_and_disabled_spawn() {
+        let _guard = EnvGuard::swap(None);
+        assert_eq!(watchdog_interval(), Duration::ZERO);
+        // Disabled watchdog: the spawned task returns immediately.
+        let (_tx, rx) = watch::channel(false);
+        spawn_watchdog(rx).await.unwrap();
+
+        std::env::set_var("WATCHDOG_USEC", "0");
+        assert_eq!(watchdog_interval(), Duration::ZERO);
+        std::env::set_var("WATCHDOG_USEC", "not-a-number");
+        assert_eq!(watchdog_interval(), Duration::ZERO);
+        // Third of the timeout, clamped to [1s, 300s].
+        std::env::set_var("WATCHDOG_USEC", "9000000");
+        assert_eq!(watchdog_interval(), Duration::from_secs(3));
+        std::env::set_var("WATCHDOG_USEC", "1");
+        assert_eq!(watchdog_interval(), WATCHDOG_MIN);
+        std::env::set_var("WATCHDOG_USEC", "999999999999");
+        assert_eq!(watchdog_interval(), WATCHDOG_MAX);
+    }
+
+    #[tokio::test]
+    async fn join_with_timeout_covers_done_and_stuck() {
+        let fast = tokio::spawn(async { 7u32 });
+        assert_eq!(join_with_timeout(fast, Duration::from_secs(5)).await.unwrap(), 7);
+        let stuck = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        });
+        let err = join_with_timeout(stuck, Duration::from_millis(10)).await.unwrap_err().to_string();
+        assert!(err.contains("did not finish"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn finish_shutdown_drains_ok_and_err() {
+        let ok = tokio::spawn(async { Ok::<(), anyhow::Error>(()) });
+        finish_shutdown(ok).await;
+        let failed = tokio::spawn(async { Err::<(), anyhow::Error>(anyhow::anyhow!("x")) });
+        finish_shutdown(failed).await;
+    }
+}

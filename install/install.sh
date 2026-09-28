@@ -141,17 +141,25 @@ echo "==> Installing systemd units..."
 install -m 0644 "${ROOT_DIR}/systemd/runtimed.socket" /usr/lib/systemd/system/runtimed.socket
 install -m 0644 "${ROOT_DIR}/systemd/runtimed.service" /usr/lib/systemd/system/runtimed.service
 
+CUDA_CONF_REMOVED=0
 if [[ -n "${CUDA_GPU}" ]]; then
     echo "==> Selecting graphics card ${CUDA_GPU}..."
     mkdir -p /etc/systemd/system/runtimed.service.d
     printf '[Service]\nEnvironment=RUNTIMED_BACKEND=cuda:%s\n' "${CUDA_GPU}" \
         > /etc/systemd/system/runtimed.service.d/cuda.conf
+elif [[ -f /etc/systemd/system/runtimed.service.d/cuda.conf ]]; then
+    # A reinstall without --cuda-gpu must not keep yesterday's cuda.conf:
+    # a CPU-only binary paired with RUNTIMED_BACKEND=cuda refuses
+    # every load. Drop it so the daemon falls back to the CPU.
+    echo "==> Removing stale graphics-card selection (CPU build)..."
+    rm -f /etc/systemd/system/runtimed.service.d/cuda.conf
+    CUDA_CONF_REMOVED=1
 fi
 
 echo "==> Reloading systemd daemon..."
 systemctl daemon-reload
 systemctl enable --now runtimed.socket
-if [[ -n "${CUDA_GPU}" ]]; then systemctl try-restart runtimed.service; fi
+if [[ -n "${CUDA_GPU}" || "${CUDA_CONF_REMOVED}" == "1" ]]; then systemctl try-restart runtimed.service; fi
 
 # --- user enrollment: the CLI talks to a socket owned by root:syntrop,
 # so the human needs that group (effective on next login). ---

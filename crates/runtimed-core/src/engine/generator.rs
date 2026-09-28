@@ -2,8 +2,9 @@
 
 use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
+use crate::model::tokenizer::EngineTokenizer;
 use super::mm;
-use runtimed_model::{generate, sample};
+use runtimed_model::{chat, generate, sample};
 use serde::{Deserialize, Serialize};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -72,6 +73,21 @@ pub(super) fn entropy_seed() -> u64 {
         | 1
 }
 
+/// Prompt ids for a text request. GGUF-BPE (Gemma4) models are
+/// turn-trained: a raw prompt makes them end the turn immediately
+/// (one empty completion token), so they get the chat template.
+/// Other tokenizers complete the raw prompt.
+fn text_prompt_ids(
+    tokenizer: &EngineTokenizer,
+    prompt: &str,
+    add_special: bool,
+) -> Result<Vec<u32>, RuntimedError> {
+    match tokenizer.as_bpe() {
+        Some(bpe) => chat::text_prompt(bpe, prompt).map_err(|e| RuntimedError::GenerationFailed(e.to_string())),
+        None => tokenizer.encode(prompt, add_special),
+    }
+}
+
 /// Executes token generation for a prompt against a loaded model.
 pub fn generate_tokens(
     entry: &EngineEntry,
@@ -81,7 +97,7 @@ pub fn generate_tokens(
     if request.image_base64.is_some() {
         return mm::generate_mm_tokens(entry, request, start);
     }
-    let prompt_ids = entry.tokenizer.encode(&request.prompt, entry.add_special)?;
+    let prompt_ids = text_prompt_ids(&entry.tokenizer, &request.prompt, entry.add_special)?;
 
     if prompt_ids.len() > entry.meta.context_window {
         return Err(RuntimedError::ContextExceeded {
@@ -149,5 +165,35 @@ pub(super) fn finish(
         "generate"
     );
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gated_q4k() -> Option<std::path::PathBuf> {
+        let path = std::path::PathBuf::from(std::env::var("SYNTROP_TEST_GGUF_Q4K").ok()?);
+        if !path.exists() {
+            eprintln!("skip: SYNTROP_TEST_GGUF_Q4K not set or missing");
+            return None;
+        }
+        Some(path)
+    }
+
+    #[test]
+    fn bpe_text_prompts_get_chat_template() {
+        let Some(path) = gated_q4k() else { return };
+        let file = runtimed_gguf::GgufFile::open(&path).expect("parse");
+        let bpe = runtimed_gguf::GgufBpe::from_gguf(&file).expect("bpe");
+        let tok = EngineTokenizer::Bpe(bpe);
+        let ids = text_prompt_ids(&tok, "Say hello.", true).expect("prompt ids");
+        // Templated: BOS + <|turn> open the system turn (server-verified ids).
+        assert_eq!(&ids[..2], &[2, 105]);
+        // Strictly richer than the raw encoding (regression: raw prompts
+        // made Gemma4 emit one empty end-of-turn token).
+        let raw = tok.encode("Say hello.", true).expect("raw");
+        assert!(ids.len() > raw.len() + 8);
+        assert_ne!(ids, raw);
+    }
 }
 

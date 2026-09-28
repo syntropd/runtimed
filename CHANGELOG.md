@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Gemma4 text prompts templated**: plain `Generate` calls on GGUF-BPE
+  (Gemma4) models now wrap the prompt in the chat template (previously
+  vision-only). Raw prompts made the model end the turn immediately,
+  returning one empty completion token.
 - **One installer**: the runtimed-only one-liner is gone, merged into the
   fleet installer (`https://syntropd.github.io/install.sh`), which now
   ships the Gemma brain by default (syntropd 0.3.9).

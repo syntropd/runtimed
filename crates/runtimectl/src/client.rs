@@ -78,7 +78,7 @@ impl RuntimedClient {
                     .map_err(|e| anyhow!("Failed parsing Varlink reply from runtimed: {}", e))?;
 
                 if let Some(err) = response.error {
-                    bail!("runtimed returned error: {}", err);
+                    bail!("{}", render_server_error(&err, response.parameters.as_ref()));
                 }
 
                 return response
@@ -87,6 +87,18 @@ impl RuntimedClient {
             }
         }
     }
+}
+
+/// Human text for a daemon error reply: the error name plus the
+/// server's `reason` when it sent one (that names the real cause,
+/// e.g. a CPU-only binary asked to run CUDA).
+fn render_server_error(err: &str, parameters: Option<&Value>) -> String {
+    let detail = parameters
+        .and_then(|p| p.get("reason"))
+        .and_then(|r| r.as_str())
+        .map(|r| format!(": {r}"))
+        .unwrap_or_default();
+    format!("runtimed returned error: {err}{detail}")
 }
 
 /// Fake daemon for command tests: serves each canned reply envelope on
@@ -161,6 +173,24 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("ModelNotFound"), "{err}");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn call_error_names_server_reason() {
+        let (client, server) = fake_daemon(vec![json!({
+            "error": "io.syntrop.Runtime1.GenerationFailed",
+            "parameters": {
+                "reason": "Hardware compute allocation failure: cuda backend needs a --features cuda build"
+            }
+        })]);
+        let err = client
+            .call("io.syntrop.Runtime1.Generate", None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("GenerationFailed"), "{err}");
+        assert!(err.contains("cuda backend needs a --features cuda build"), "{err}");
         server.await.unwrap();
     }
 

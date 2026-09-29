@@ -44,27 +44,31 @@ mod tests {
         respond: &impl Fn(&Value) -> Value,
         seen: &Mutex<Vec<Value>>,
     ) -> std::io::Result<()> {
-        let mut buf = Vec::new();
-        let mut chunk = [0u8; 4096];
         loop {
-            let n = conn.read(&mut chunk)?;
-            if n == 0 {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = conn.read(&mut chunk)?;
+                if n == 0 {
+                    return Ok(());
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                if buf.contains(&0) {
+                    break;
+                }
+            }
+            if buf.last() == Some(&0) {
+                buf.pop();
+            }
+            if buf.is_empty() {
                 return Ok(());
             }
-            buf.extend_from_slice(&chunk[..n]);
-            if buf.contains(&0) {
-                break;
-            }
+            let req: Value = serde_json::from_slice(&buf).unwrap();
+            seen.lock().unwrap().push(req.clone());
+            let mut reply = serde_json::to_vec(&respond(&req)).unwrap();
+            reply.push(0);
+            conn.write_all(&reply)?;
         }
-        if buf.last() == Some(&0) {
-            buf.pop();
-        }
-        let req: Value = serde_json::from_slice(&buf).unwrap();
-        seen.lock().unwrap().push(req.clone());
-        let mut reply = serde_json::to_vec(&respond(&req)).unwrap();
-        reply.push(0);
-        conn.write_all(&reply)?;
-        Ok(())
     }
 
     fn lease_reply() -> Value {
@@ -86,7 +90,7 @@ mod tests {
         });
         let client = LeaseClient::new(&fake.path);
         let permit = client.acquire(4096).unwrap().expect("lease held");
-        client.release_permit(&permit).unwrap();
+        permit.release().unwrap();
         let seen = fake.seen.lock().unwrap();
         assert_eq!(seen.len(), 2);
         assert!(seen[0]["method"].as_str().unwrap().ends_with("AcquireLease"));

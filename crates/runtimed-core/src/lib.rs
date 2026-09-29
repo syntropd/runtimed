@@ -4,6 +4,7 @@ pub mod config;
 pub mod engine;
 pub mod error;
 pub mod model;
+pub mod psi;
 
 pub use config::DEFAULT_CONFIG_PATH;
 pub use config::DEFAULT_MODELS_PATH;

@@ -138,4 +138,22 @@ mod tests {
         let err = pinned.load_model("w", None).unwrap_err().to_string();
         assert!(!err.contains("weight verification"), "{err}");
     }
+
+    #[test]
+    fn test_cas_fd_missing_socket_returns_none() {
+        assert!(runtimed_core::model::cas_fd::fetch_model_fd("ghost-model-xyz").is_none());
+    }
+
+    #[test]
+    fn test_psi_parse_avg10_and_shedding() {
+        let sample = "some avg10=28.50 avg60=12.20 avg300=5.10 total=123456\nfull avg10=6.20 avg60=2.10 avg300=0.50 total=4567\n";
+        assert_eq!(runtimed_core::psi::parse_psi_avg10(sample, "some"), Some(28.50));
+        assert_eq!(runtimed_core::psi::parse_psi_avg10(sample, "full"), Some(6.20));
+        assert_eq!(runtimed_core::psi::parse_psi_avg10(sample, "missing"), None);
+
+        let tmp = tempdir().unwrap();
+        let manager = ModelManager::new(tmp.path());
+        assert!(!runtimed_core::psi::evaluate_and_shed_memory(&manager, 1.0, 0.0));
+        assert!(runtimed_core::psi::evaluate_and_shed_memory(&manager, 30.0, 8.0));
+    }
 }

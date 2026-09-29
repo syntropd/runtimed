@@ -125,7 +125,7 @@ async fn read_frame(stream: &mut UnixStream, buffer: &mut Vec<u8>) -> Result<Rea
         return Ok(ReadOutcome::Frame(frame));
     }
 
-    let mut chunk = [0u8; 1024];
+    let mut chunk = [0u8; 8192];
     loop {
         let n = stream.read(&mut chunk).await?;
         if n == 0 {
@@ -135,14 +135,16 @@ async fn read_frame(stream: &mut UnixStream, buffer: &mut Vec<u8>) -> Result<Rea
                 ReadOutcome::Truncated
             });
         }
+        let search_start = buffer.len();
         buffer.extend_from_slice(&chunk[..n]);
         // Use `>=` so we never admit the (MAX_MSG_BYTES + 1)-th byte:
         // a hostile client cannot slip one extra chunk above the cap.
         if buffer.len() >= MAX_MSG_BYTES {
             return Ok(ReadOutcome::Overflow);
         }
-        if let Some(pos) = buffer.iter().position(|&b| b == 0x00) {
-            let frame = buffer.drain(..pos).collect::<Vec<u8>>();
+        if let Some(pos) = buffer[search_start..].iter().position(|&b| b == 0x00) {
+            let abs_pos = search_start + pos;
+            let frame = buffer.drain(..abs_pos).collect::<Vec<u8>>();
             buffer.remove(0);
             return Ok(ReadOutcome::Frame(frame));
         }

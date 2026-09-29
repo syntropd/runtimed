@@ -45,7 +45,7 @@ impl ModelManager {
     /// disabled (0) limit, or an empty store is a no-op. Entries
     /// with a generation in flight are skipped for the next tick.
     pub fn unload_idle(&self, limit_secs: u64) -> Vec<(String, usize)> {
-        if limit_secs == 0 || self.idle_secs() < limit_secs {
+        if limit_secs > 0 && self.idle_secs() < limit_secs {
             return Vec::new();
         }
         let names: Vec<String> = self

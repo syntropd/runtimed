@@ -114,12 +114,17 @@ pub struct GgufFile {
 }
 
 impl GgufFile {
+    /// Opens and maps weights from an already open file handle (e.g. sealed memfd).
+    pub fn from_file(file: &File) -> Result<Self> {
+        // SAFETY: weight files/descriptors are immutable when mapped;
+        // all tensor access is bounds-checked.
+        let mmap = unsafe { Mmap::map(file)? };
+        Self::parse(mmap)
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
-        // SAFETY: weight files are verified by hash before use and never
-        // mutated while mapped; all tensor access is bounds-checked.
-        let mmap = unsafe { Mmap::map(&file)? };
-        Self::parse(mmap)
+        Self::from_file(&file)
     }
 
     fn parse(mmap: Mmap) -> Result<Self> {

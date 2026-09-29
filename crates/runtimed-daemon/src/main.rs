@@ -95,6 +95,10 @@ async fn main() -> Result<()> {
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let watchdog_handle = spawn_watchdog(shutdown_rx.clone());
+    let psi_handle = runtimed_core::psi::spawn_psi_monitor(
+        Arc::clone(&model_manager),
+        shutdown_rx.clone(),
+    );
     let idle_handle = match idle_limit_secs() {
         0 => None,
         idle_secs => {
@@ -127,6 +131,7 @@ async fn main() -> Result<()> {
 
     finish_shutdown(server_handle).await;
     let _ = watchdog_handle.await;
+    let _ = psi_handle.await;
     if let Some(handle) = idle_handle {
         let _ = handle.await;
     }

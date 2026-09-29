@@ -32,7 +32,7 @@ mod tests {
     /// Edge case: oversized frame triggers a `ProtocolError` reply and the
     /// connection is closed. This is the live regression test for the
     /// memory-DoS path against the daemon's wire-protocol handler.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_oversized_message_drops_connection() {
         let tmp = tempdir().unwrap();
         let manager = Arc::new(ModelManager::new(tmp.path()));
@@ -52,11 +52,16 @@ mod tests {
         // expected to write the ProtocolError reply and drop us; ignore
         // BrokenPipe from the write side.
         let payload = vec![b'B'; MAX_MSG_BYTES + 64];
-        let _ = write_half.write_all(&payload).await;
-        drop(write_half);
-
-        let mut buf = Vec::new();
-        let _ = read_half.read_to_end(&mut buf).await;
+        let write_fut = async move {
+            let _ = write_half.write_all(&payload).await;
+            drop(write_half);
+        };
+        let read_fut = async move {
+            let mut buf = Vec::new();
+            let _ = read_half.read_to_end(&mut buf).await;
+            buf
+        };
+        let (_, buf) = tokio::join!(write_fut, read_fut);
         assert!(!buf.is_empty(), "expected a ProtocolError reply on the wire");
         let parsed: serde_json::Value =
             serde_json::from_slice(&buf[..buf.len() - 1]).unwrap();

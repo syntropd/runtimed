@@ -39,6 +39,15 @@ impl Session {
         Ok((session, file))
     }
 
+    /// Load config + weights from an already opened file handle (e.g. sealed memfd).
+    pub fn load_from_file(file: &std::fs::File, dev: &candle_core::Device) -> Result<(Self, runtimed_gguf::GgufFile)> {
+        let gguf_file = runtimed_gguf::GgufFile::from_file(file)?;
+        let cfg = Arc::new(ArchConfig::parse(&gguf_file)?);
+        let w = Arc::new(Weights::load(&gguf_file, dev)?);
+        let session = Self::new(cfg, w)?;
+        Ok((session, gguf_file))
+    }
+
     pub fn config(&self) -> &ArchConfig {
         &self.cfg
     }

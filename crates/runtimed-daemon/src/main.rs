@@ -2,10 +2,11 @@
 
 use anyhow::{Context, Result};
 use runtimed_core::config::{RuntimedConfig, DEFAULT_CONFIG_PATH};
+use runtimed_core::model::idle::idle_limit_secs;
 use runtimed_core::model::ModelManager;
 use runtimed_daemon::activation::parse_listen_fds;
 use runtimed_daemon::notify::{notify_ready, NOTIFY_MAX};
-use runtimed_daemon::runtime::{finish_shutdown, spawn_watchdog, SHUTDOWN_TIMEOUT};
+use runtimed_daemon::runtime::{finish_shutdown, spawn_idle_unloader, spawn_watchdog, SHUTDOWN_TIMEOUT};
 use runtimed_daemon::varlink::{lookup_group, Runtime1Handler, TrustedGroup, VarlinkServer, UNRESOLVED_GID};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -94,6 +95,17 @@ async fn main() -> Result<()> {
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let watchdog_handle = spawn_watchdog(shutdown_rx.clone());
+    let idle_handle = match idle_limit_secs() {
+        0 => None,
+        idle_secs => {
+            info!("Idle unload armed: shedding weights after {idle_secs}s quiet");
+            Some(spawn_idle_unloader(
+                Arc::clone(&model_manager),
+                idle_secs,
+                shutdown_rx.clone(),
+            ))
+        }
+    };
 
     notify_ready();
     info!("runtimed successfully initialized and ready (max_notify={})", NOTIFY_MAX);
@@ -115,6 +127,9 @@ async fn main() -> Result<()> {
 
     finish_shutdown(server_handle).await;
     let _ = watchdog_handle.await;
+    if let Some(handle) = idle_handle {
+        let _ = handle.await;
+    }
     info!("runtimed shutdown completed");
     Ok(())
 }

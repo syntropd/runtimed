@@ -131,6 +131,13 @@ cargo run --bin runtimectl -- embed "kernel panic on cpu 0"
 cargo run --bin runtimectl -- status qwen2.5-coder-7b
 ```
 
+### Environment
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RUNTIMED_BACKEND` | CPU | `cpu`, `cuda`, or `cuda:N` compute device for loads. |
+| `RUNTIMED_IDLE_UNLOAD_SECS` | `0` (off) | Seconds of engine quiet before resident models unload (leases released, memory freed). Keeps warm by default. |
+
 ---
 
 ## License

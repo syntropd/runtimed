@@ -2,6 +2,7 @@
 
 pub mod admit_lease;
 pub mod attach;
+pub mod idle;
 pub mod loader;
 pub mod meta;
 pub mod resolve;

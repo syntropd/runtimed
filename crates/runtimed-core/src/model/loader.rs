@@ -16,6 +16,7 @@ use runtimed_model::Session;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::time::Instant;
 
 /// Manages active loaded models and dynamic eviction.
 pub struct ModelManager {
@@ -23,6 +24,8 @@ pub struct ModelManager {
     active_models: RwLock<HashMap<String, Arc<EngineEntry>>>,
     /// Inferenced leases held per resident model (own lock; see admit_lease).
     pub(super) leases: Mutex<HashMap<String, LeasePermit>>,
+    /// Last generation-class use (idle unload clock; see idle).
+    pub(super) last_used: Mutex<Instant>,
     /// SHA256 pins from `registry.toml` at the models root or its
     /// `gguf/` subdir (R2). `None` means no registry file: loads
     /// proceed unenforced (fail-open, logged).
@@ -40,6 +43,7 @@ impl ModelManager {
             models_dir,
             active_models: RwLock::new(HashMap::new()),
             leases: Mutex::new(HashMap::new()),
+            last_used: Mutex::new(Instant::now()),
             registry,
             registry_error,
         }
@@ -81,6 +85,7 @@ impl ModelManager {
     /// `backend` accepts `None`/`"cpu"` today; anything else is an honest
     /// error naming the phase that will unlock it.
     pub fn load_model(&self, name: &str, backend: Option<&str>) -> Result<LoadedModel, RuntimedError> {
+        self.touch();
         if let Ok(lock) = self.active_models.read() {
             if let Some(entry) = lock.get(name) {
                 return Ok(entry.meta.clone());
@@ -179,6 +184,7 @@ impl ModelManager {
 
     /// Retrieves the live entry (session + tokenizer) for generation.
     pub fn get_entry(&self, name: &str) -> Option<Arc<EngineEntry>> {
+        self.touch();
         let lock = self.read_lock().ok()?;
         lock.get(name).cloned()
     }

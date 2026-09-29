@@ -3,6 +3,8 @@
 //! short.
 
 use anyhow::{Context as _, Result};
+use runtimed_core::model::ModelManager;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -78,6 +80,37 @@ pub async fn join_with_timeout<T>(handle: JoinHandle<T>, timeout: Duration) -> R
     }
 }
 
+/// Sweep interval for an idle limit: check at least every minute so
+/// a long limit still sheds promptly, but never faster than 5s.
+pub fn idle_tick(idle_secs: u64) -> Duration {
+    Duration::from_secs(idle_secs.min(60).max(5))
+}
+
+/// Spawns idle unload: every tick the engine sheds resident models
+/// quiet longer than `idle_secs` (leases released, weights freed).
+pub fn spawn_idle_unloader(
+    manager: Arc<ModelManager>,
+    idle_secs: u64,
+    mut shutdown: watch::Receiver<bool>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let tick = idle_tick(idle_secs);
+        loop {
+            tokio::select! {
+                biased;
+                _ = shutdown.changed() => return,
+                _ = sleep(tick) => {
+                    let freed = manager.unload_idle(idle_secs);
+                    if !freed.is_empty() {
+                        let total: usize = freed.iter().map(|(_, b)| b).sum();
+                        info!(models = freed.len(), bytes = total, "idle unload freed weights");
+                    }
+                }
+            }
+        }
+    })
+}
+
 /// Drains the server task, then notifies systemd that the daemon is stopping.
 pub async fn finish_shutdown(handle: JoinHandle<Result<()>>) {
     match join_with_timeout(handle, SHUTDOWN_TIMEOUT).await {
@@ -135,6 +168,13 @@ mod tests {
         assert_eq!(watchdog_interval(), WATCHDOG_MIN);
         std::env::set_var("WATCHDOG_USEC", "999999999999");
         assert_eq!(watchdog_interval(), WATCHDOG_MAX);
+    }
+
+    #[test]
+    fn idle_tick_clamps_to_five_seconds_and_a_minute() {
+        assert_eq!(idle_tick(3600), Duration::from_secs(60));
+        assert_eq!(idle_tick(20), Duration::from_secs(20));
+        assert_eq!(idle_tick(1), Duration::from_secs(5));
     }
 
     #[tokio::test]

@@ -107,6 +107,8 @@ mod tests {
             top_p: 1.0,
             seed: 1,
             image_base64: image.map(str::to_string),
+            grammar_type: None,
+            grammar: None,
         }
     }
 

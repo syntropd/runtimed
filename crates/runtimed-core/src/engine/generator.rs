@@ -12,26 +12,22 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 /// Parameters for a text generation request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenerationRequest {
-    /// Target model identifier.
     pub model: String,
-    /// Text prompt to complete.
     pub prompt: String,
-    /// Maximum new tokens to sample.
     pub max_tokens: usize,
-    /// Sampling temperature (0.0 for greedy deterministic decoding).
     pub temperature: f32,
-    /// Top-k truncation (0 disables).
     #[serde(default)]
     pub top_k: usize,
-    /// Nucleus truncation (1.0 disables).
     #[serde(default = "default_top_p")]
     pub top_p: f32,
-    /// Sampling seed (0 draws entropy from the clock).
     #[serde(default)]
     pub seed: u64,
-    /// Base64-encoded image (PNG/JPEG) for multimodal generation.
     #[serde(default)]
     pub image_base64: Option<String>,
+    #[serde(default)]
+    pub grammar_type: Option<String>,
+    #[serde(default)]
+    pub grammar: Option<String>,
 }
 
 fn default_top_p() -> f32 {
@@ -67,17 +63,10 @@ impl Rng {
 }
 
 pub(super) fn entropy_seed() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0x243F_6A88_85A3_08D3)
-        | 1
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x243F_6A88_85A3_08D3) | 1
 }
 
-/// Prompt ids for a text request. GGUF-BPE (Gemma4) models are
-/// turn-trained: a raw prompt makes them end the turn immediately
-/// (one empty completion token), so they get the chat template.
-/// Other tokenizers complete the raw prompt.
+/// Prompt ids for a text request. GGUF-BPE (Gemma4) models are turn-trained.
 fn text_prompt_ids(
     tokenizer: &EngineTokenizer,
     prompt: &str,
@@ -85,7 +74,33 @@ fn text_prompt_ids(
 ) -> Result<Vec<u32>, RuntimedError> {
     match tokenizer.as_bpe() {
         Some(bpe) => chat::text_prompt(bpe, prompt).map_err(|e| RuntimedError::GenerationFailed(e.to_string())),
-        None => tokenizer.encode(prompt, add_special),
+        None => tokenizer.encode(prompt, add_special).map_err(Into::into),
+    }
+}
+
+fn generate_guided_tokens(
+    session: &mut runtimed_model::Session,
+    entry: &EngineEntry,
+    prompt_ids: &[u32],
+    budget: usize,
+    req: &GenerationRequest,
+    mut rng: Rng,
+) -> Result<Vec<u32>, RuntimedError> {
+    use runtimed_model::sampler::*;
+    let trie = VocabTrie::from_tokenizer(&entry.tokenizer);
+    let (t, k, p) = (req.temperature, req.top_k, req.top_p);
+    let mut step = |g: &dyn FsmGrammar, st: &mut FsmState| {
+        generate(session, prompt_ids, &entry.eos, budget, |l| {
+            sample_with_grammar(l, g, st, &trie, &entry.eos, t, k, p, || rng.next_f32())
+        }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
+    };
+    match req.grammar_type.as_deref().unwrap_or("json") {
+        "regex" => {
+            let g = RegexFsm::compile(req.grammar.as_deref().unwrap_or(r"\d+"))?;
+            step(&g, &mut FsmState::new(g.initial_state()))
+        }
+        "varlink" => step(&VarlinkFsm::new(), &mut FsmState::new(0)),
+        _ => step(&JsonFsm::new(), &mut FsmState::new(0)),
     }
 }
 
@@ -125,16 +140,20 @@ pub fn generate_tokens(
         .map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
-    let ids = generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
-        sample::sample(
-            logits,
-            request.temperature,
-            request.top_k,
-            request.top_p,
-            || rng.next_f32(),
-        )
-    })
-    .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+    let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
+        generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?
+    } else {
+        generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
+            sample::sample(
+                logits,
+                request.temperature,
+                request.top_k,
+                request.top_p,
+                || rng.next_f32(),
+            )
+        })
+        .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
+    };
     drop(session);
 
     let text = entry.tokenizer.decode(&ids)?;
@@ -183,8 +202,7 @@ mod tests {
 
     #[test]
     fn rng_is_deterministic_per_seed() {
-        let mut a = Rng(42);
-        let mut b = Rng(42);
+        let (mut a, mut b) = (Rng(42), Rng(42));
         for _ in 0..8 {
             assert_eq!(a.next_f32(), b.next_f32());
         }
@@ -208,6 +226,7 @@ mod tests {
         assert_eq!(req.top_k, 0);
         assert_eq!(req.seed, 0);
         assert_eq!(req.image_base64, None);
+        assert_eq!(req.grammar_type, None);
     }
 
     #[test]

@@ -16,6 +16,7 @@ pub use engine::GenerationResult;
 pub use engine::cosine_similarity;
 pub use engine::generate_embedding;
 pub use engine::generate_tokens;
+pub use engine::{BudgetAction, JournalEntry, StreamJournal, ThinkBudget, ThinkingPhase};
 pub use error::RuntimedError;
 pub use model::EngineEntry;
 pub use model::EngineTokenizer;

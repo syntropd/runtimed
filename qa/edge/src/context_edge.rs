@@ -34,6 +34,8 @@ mod tests {
             top_p: 1.0,
             seed: 0,
             image_base64: None,
+            grammar_type: None,
+            grammar: None,
         };
 
         match generate_tokens(&entry, &request) {

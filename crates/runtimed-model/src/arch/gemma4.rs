@@ -29,6 +29,22 @@ impl Cache {
             *slot = None;
         }
     }
+
+    pub fn truncate(&mut self, target_len: usize) {
+        for slot in self.layers.iter_mut() {
+            if let Some((k, v)) = slot.take() {
+                if target_len > 0 && k.dim(2).map(|l| l > target_len).unwrap_or(false) {
+                    if let (Ok(kt), Ok(vt)) = (k.narrow(2, 0, target_len), v.narrow(2, 0, target_len)) {
+                        *slot = Some((kt, vt));
+                        continue;
+                    }
+                }
+                if target_len > 0 {
+                    *slot = Some((k, v));
+                }
+            }
+        }
+    }
 }
 
 /// Per-layer inputs `[1, seq, n_layer, ple]`: token identity plus a

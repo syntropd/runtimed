@@ -34,6 +34,10 @@ pub enum RuntimedError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// Lower-level model error.
+    #[error("Model error: {0}")]
+    Model(#[from] runtimed_model::ModelError),
+
     /// Standard I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

@@ -73,14 +73,15 @@ impl PagedKvCache {
 
         let mut offset = 0;
         while offset < n_tokens {
-            let can_append = if let Some(&last_bid) = self.layer_tables[layer].last() {
-                self.blocks[last_bid].num_tokens < BLOCK_SIZE
-            } else {
-                false
-            };
+            let last_info = self.layer_tables[layer].last().copied().and_then(|bid| {
+                if self.blocks[bid].num_tokens < BLOCK_SIZE {
+                    Some(bid)
+                } else {
+                    None
+                }
+            });
 
-            if can_append {
-                let last_bid = *self.layer_tables[layer].last().unwrap();
+            if let Some(last_bid) = last_info {
                 let block = &mut self.blocks[last_bid];
                 let space = BLOCK_SIZE - block.num_tokens;
                 let take = space.min(n_tokens - offset);
@@ -98,6 +99,36 @@ impl PagedKvCache {
                 self.layer_tables[layer].push(new_id);
                 offset += take;
             }
+        }
+        Ok(())
+    }
+
+    /// Truncates the KV cache down to `target_len` tokens for O(1) speculative rollback.
+    pub fn truncate(&mut self, target_len: usize) -> Result<()> {
+        for layer in 0..self.n_layer {
+            if target_len == 0 {
+                self.layer_tables[layer].clear();
+                continue;
+            }
+            let mut remaining = target_len;
+            let mut keep = Vec::new();
+            for &bid in &self.layer_tables[layer] {
+                if remaining == 0 {
+                    break;
+                }
+                let block = &mut self.blocks[bid];
+                if block.num_tokens <= remaining {
+                    remaining -= block.num_tokens;
+                    keep.push(bid);
+                } else {
+                    block.k = block.k.narrow(2, 0, remaining)?;
+                    block.v = block.v.narrow(2, 0, remaining)?;
+                    block.num_tokens = remaining;
+                    keep.push(bid);
+                    remaining = 0;
+                }
+            }
+            self.layer_tables[layer] = keep;
         }
         Ok(())
     }
@@ -130,6 +161,23 @@ impl PagedKvCache {
         let full_k = Tensor::cat(&k_refs, 2)?;
         let full_v = Tensor::cat(&v_refs, 2)?;
         Ok(Some((full_k, full_v)))
+    }
+
+    /// Assembles layer KV cache and applies cache-relative RoPE to assembled unrotated K tensor.
+    pub fn assemble_layer_kv_rope(
+        &self,
+        layer: usize,
+        dev: &Device,
+        positions: &[usize],
+        theta: f32,
+        rot_dim: usize,
+    ) -> Result<Option<(Tensor, Tensor)>> {
+        let (full_k, full_v) = match self.assemble_layer_kv(layer, dev)? {
+            Some(kv) => kv,
+            None => return Ok(None),
+        };
+        let rotated_k = crate::ops::rope_neox_pos(&full_k, positions, theta, rot_dim, None)?;
+        Ok(Some((rotated_k, full_v)))
     }
 
     pub fn count_tier_blocks(&self, tier: StorageTier) -> usize {
@@ -168,5 +216,34 @@ mod tests {
         let (full_k, full_v) = cache.assemble_layer_kv(0, &Device::Cpu).unwrap().unwrap();
         assert_eq!(full_k.dims(), &[1, 2, 26, 64]);
         assert_eq!(full_v.dims(), &[1, 2, 26, 64]);
+    }
+
+    #[test]
+    fn test_truncate_kv_rollback() {
+        let mut cache = PagedKvCache::new(1);
+        let k = Tensor::zeros((1, 2, 20, 64), DType::F32, &Device::Cpu).unwrap();
+        let v = Tensor::zeros((1, 2, 20, 64), DType::F32, &Device::Cpu).unwrap();
+        cache.append_kv(0, &k, &v, &Device::Cpu).unwrap();
+        assert_eq!(cache.layer_tables[0].len(), 2);
+
+        // Truncate to 10 tokens (fits in block 0)
+        cache.truncate(10).unwrap();
+        assert_eq!(cache.layer_tables[0].len(), 1);
+        assert_eq!(cache.blocks[0].num_tokens, 10);
+        let (full_k, _) = cache.assemble_layer_kv(0, &Device::Cpu).unwrap().unwrap();
+        assert_eq!(full_k.dims(), &[1, 2, 10, 64]);
+    }
+
+    #[test]
+    fn test_assemble_layer_kv_rope() {
+        let mut cache = PagedKvCache::new(1);
+        let k = Tensor::zeros((1, 1, 2, 4), DType::F32, &Device::Cpu).unwrap();
+        let v = Tensor::zeros((1, 1, 2, 4), DType::F32, &Device::Cpu).unwrap();
+        cache.append_kv(0, &k, &v, &Device::Cpu).unwrap();
+        let (rk, _) = cache
+            .assemble_layer_kv_rope(0, &Device::Cpu, &[0, 1], 10000.0, 4)
+            .unwrap()
+            .unwrap();
+        assert_eq!(rk.dims(), &[1, 1, 2, 4]);
     }
 }

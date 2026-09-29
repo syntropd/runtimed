@@ -12,6 +12,11 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 ## Features
 
 - **Socket-Activated Varlink IPC**: Native implementation of `io.syntrop.Runtime1` over Unix domain sockets with socket activation.
+- **Constrained / Grammar-Guided Decoding**: Zero-overhead FSM token filtering supporting JSON schema, regex, and Varlink protocols with SIMD-aligned bitset logit masking and vocab trie pruning.
+- **Heterogeneous Speculative Decoding**: Draft-target speculative verification engine paired with O(1) KV-cache rollback (`truncate`).
+- **Reasoning Budget Enforcement**: Test-time compute scaling enforcing thinking token limits via `</think>` token injection and logit masking.
+- **Attention Sinks & Infinite Streaming Context**: StreamingLLM attention sinks (`SinkWindowCache`, `sink_causal_mask`) with cache-relative RoPE for infinite context generation without OOM.
+- **Continuous Stream Journal**: Bounded FIFO event journal with pinned attention sinks ensuring strict memory ceilings under continuous log streams.
 - **Dynamic Model Lifecycle Management**: On-demand model loading, hardware backend selection, and clean memory eviction.
 - **Fast Token Generation**: Strict context window checking, token budgeting, and execution metrics.
 - **Normalized Vector Embeddings**: 128-dimensional L2-normalized vector generation for semantic log and incident retrieval.

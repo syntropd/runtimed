@@ -111,6 +111,14 @@ impl Session {
         }
     }
 
+    /// Roll back internal KV cache to target_len tokens for speculative decoding.
+    pub fn truncate(&mut self, target_len: usize) {
+        match &mut self.kind {
+            Kind::Qwen2(c) => c.truncate(target_len),
+            Kind::Gemma4(c) => c.truncate(target_len),
+        }
+    }
+
     /// Fuse a LoRA adapter into the live weights (base file untouched).
     /// Returns the fused base names. The KV cache is unaffected (weights
     /// only change future forwards); callers should `reset` first anyway.

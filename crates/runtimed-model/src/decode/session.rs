@@ -48,6 +48,50 @@ impl Session {
         Ok((session, gguf_file))
     }
 
+    /// Load config + weights from a Safetensors file.
+    pub fn load_safetensors(
+        weights_path: &std::path::Path,
+        config_path: Option<&std::path::Path>,
+        dev: &candle_core::Device,
+    ) -> Result<Self> {
+        let cfg = match config_path {
+            Some(cp) => ArchConfig::from_hf_file(cp)?,
+            None => {
+                let sibling = weights_path.with_extension("config.json");
+                if sibling.exists() {
+                    ArchConfig::from_hf_file(&sibling)?
+                } else if let Some(parent) = weights_path.parent() {
+                    let parent_cfg = parent.join("config.json");
+                    if parent_cfg.exists() {
+                        ArchConfig::from_hf_file(&parent_cfg)?
+                    } else {
+                        return Err(ModelError::Config(format!(
+                            "missing config.json for {}",
+                            weights_path.display()
+                        )));
+                    }
+                } else {
+                    return Err(ModelError::Config(format!(
+                        "missing config.json for {}",
+                        weights_path.display()
+                    )));
+                }
+            }
+        };
+        let w = Arc::new(Weights::load_safetensors(weights_path, dev)?);
+        Self::new(Arc::new(cfg), w)
+    }
+
+    /// Load config + weights from an already opened Safetensors file handle.
+    pub fn load_safetensors_from_file(
+        file: &std::fs::File,
+        cfg: Arc<ArchConfig>,
+        dev: &candle_core::Device,
+    ) -> Result<Self> {
+        let w = Arc::new(Weights::load_safetensors_from_file(file, dev)?);
+        Self::new(cfg, w)
+    }
+
     pub fn config(&self) -> &ArchConfig {
         &self.cfg
     }

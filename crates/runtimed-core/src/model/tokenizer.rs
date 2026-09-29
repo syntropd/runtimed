@@ -70,4 +70,40 @@ impl EngineTokenizer {
             }
         }
     }
+
+    /// Build tokenizer from companion tokenizer.json for Safetensors weights.
+    pub fn load_for_safetensors(
+        arch: Arch,
+        weights: &Path,
+    ) -> Result<(Self, Vec<u32>, bool), RuntimedError> {
+        let tok_path = if weights.with_extension("tokenizer.json").exists() {
+            weights.with_extension("tokenizer.json")
+        } else if let Some(parent) = weights.parent() {
+            let direct = parent.join("tokenizer.json");
+            if direct.exists() {
+                direct
+            } else {
+                return Err(RuntimedError::GenerationFailed(format!(
+                    "safetensors model needs a sibling tokenizer.json next to {}",
+                    weights.display()
+                )));
+            }
+        } else {
+            return Err(RuntimedError::GenerationFailed(format!(
+                "safetensors model needs a sibling tokenizer.json next to {}",
+                weights.display()
+            )));
+        };
+
+        let tok = Tokenizer::from_file(&tok_path).map_err(|e| {
+            RuntimedError::GenerationFailed(format!("failed to load {}: {e}", tok_path.display()))
+        })?;
+
+        let (eos, add_special) = match arch {
+            Arch::Gemma4 => (vec![1], true),
+            Arch::Qwen2 => (vec![151643, 151645], false),
+        };
+
+        Ok((Self::File(tok), eos, add_special))
+    }
 }

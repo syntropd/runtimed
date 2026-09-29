@@ -20,6 +20,8 @@ pub enum ModelError {
     Tokenizer(String),
     #[error("gguf: {0}")]
     Gguf(#[from] runtimed_gguf::GgufError),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
     #[error("tensor: {0}")]
     Candle(#[from] candle_core::Error),
 }

@@ -1997,7 +1997,9 @@ dependencies = [
  "base64 0.22.1",
  "candle-core",
  "libc",
+ "memmap2",
  "rustix 0.38.44",
+ "safetensors 0.4.5",
  "serde",
  "serde_json",
  "syntrop-runtimed-gguf",
@@ -2029,6 +2031,8 @@ version = "0.5.4"
 dependencies = [
  "candle-core",
  "image",
+ "memmap2",
+ "safetensors 0.4.5",
  "serde",
  "serde_json",
  "syntrop-runtimed-gguf",

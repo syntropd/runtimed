@@ -28,6 +28,7 @@ clap_complete = "4.5.13"
 libc = "0.2.155"
 hex = "0.4"
 memmap2 = "0.9"
+safetensors = "0.4.5"
 sha2 = "0.10"
 rustix = { version = "0.38.34", features = ["fs", "net", "process", "param", "event"] }
 serde = { version = "1.0.204", features = ["derive"] }

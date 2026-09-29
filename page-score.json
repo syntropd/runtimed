@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "df36254",
+ "rev": "0e1825a",
  "dirty": true,
  "pages": [
   {
@@ -162,7 +162,7 @@
    "lines": 64,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 11
+   "reach": 13
   },
   {
    "path": "./crates/runtimed-core/src/lib.rs",
@@ -228,8 +228,29 @@
    "reach": 2
   },
   {
-   "path": "./crates/runtimed-core/src/model/loader.rs",
-   "lines": 253,
+   "path": "./crates/runtimed-core/src/model/loader/load_model.rs",
+   "lines": 144,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/model/loader/manager.rs",
+   "lines": 158,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-core/src/model/loader/mod.rs",
+   "lines": 20,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/model/loader/safetensors.rs",
+   "lines": 100,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
@@ -239,7 +260,7 @@
    "lines": 68,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 6
+   "reach": 8
   },
   {
    "path": "./crates/runtimed-core/src/model/mod.rs",
@@ -250,7 +271,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/resolve.rs",
-   "lines": 157,
+   "lines": 177,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -264,10 +285,10 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/tokenizer.rs",
-   "lines": 73,
+   "lines": 109,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 4
+   "reach": 5
   },
   {
    "path": "./crates/runtimed-core/src/psi/mod.rs",
@@ -456,7 +477,7 @@
    "lines": 128,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 2
+   "reach": 4
   },
   {
    "path": "./crates/runtimed-gguf/src/quant/dtype.rs",
@@ -571,11 +592,32 @@
    "reach": 1
   },
   {
-   "path": "./crates/runtimed-model/src/config.rs",
-   "lines": 241,
+   "path": "./crates/runtimed-model/src/config/mod.rs",
+   "lines": 29,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 10
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/config/parse_gguf.rs",
+   "lines": 180,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/config/parse_hf.rs",
+   "lines": 205,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/config/types.rs",
+   "lines": 57,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 3
   },
   {
    "path": "./crates/runtimed-model/src/decode/chat.rs",
@@ -607,17 +649,17 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
-   "lines": 151,
+   "lines": 195,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/error.rs",
-   "lines": 43,
+   "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 20
+   "reach": 28
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -627,11 +669,39 @@
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-model/src/lora.rs",
-   "lines": 171,
+   "path": "./crates/runtimed-model/src/lora/fuse.rs",
+   "lines": 51,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 2
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/lora/load_gguf.rs",
+   "lines": 83,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/lora/load_safetensors.rs",
+   "lines": 158,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/lora/mod.rs",
+   "lines": 41,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/lora/types.rs",
+   "lines": 55,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 4
   },
   {
    "path": "./crates/runtimed-model/src/ops.rs",
@@ -718,11 +788,39 @@
    "reach": 1
   },
   {
-   "path": "./crates/runtimed-model/src/weights.rs",
-   "lines": 234,
+   "path": "./crates/runtimed-model/src/weights/load_gguf.rs",
+   "lines": 90,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 10
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/load_safetensors.rs",
+   "lines": 181,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/mod.rs",
+   "lines": 23,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/name_map.rs",
+   "lines": 84,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/store.rs",
+   "lines": 136,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 3
   },
   {
    "path": "./crates/runtimed-model/tests/arch_config.rs",
@@ -741,6 +839,13 @@
   {
    "path": "./crates/runtimed-model/tests/lora.rs",
    "lines": 164,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 3
+  },
+  {
+   "path": "./crates/runtimed-model/tests/safetensors_load.rs",
+   "lines": 127,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

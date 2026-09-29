@@ -14,7 +14,9 @@ path = "src/lib.rs"
 [dependencies]
 candle-core.workspace = true
 image.workspace = true
+memmap2.workspace = true
 runtimed-gguf = { package = "syntrop-runtimed-gguf", version = "0.5.2", path = "../runtimed-gguf" }
+safetensors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

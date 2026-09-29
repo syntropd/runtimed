@@ -19,11 +19,16 @@ pub(crate) fn resolve_path(models_dir: &Path, name: &str) -> Option<PathBuf> {
     if literal.is_absolute() && literal.exists() {
         return Some(literal);
     }
-    let fleet = models_dir.join("gguf");
-    for root in [models_dir, fleet.as_path()] {
+    let fleet_safetensors = models_dir.join("safetensors");
+    let fleet_gguf = models_dir.join("gguf");
+    for root in [models_dir, fleet_safetensors.as_path(), fleet_gguf.as_path()] {
         let direct = root.join(name);
         if direct.exists() {
             return Some(direct);
+        }
+        let with_st = root.join(format!("{name}.safetensors"));
+        if with_st.exists() {
+            return Some(with_st);
         }
         let with_ext = root.join(format!("{name}.gguf"));
         if with_ext.exists() {
@@ -153,5 +158,20 @@ mod tests {
         let (reg, err) = load_registry(tmp.path());
         assert!(reg.is_none());
         assert!(!err.unwrap().is_empty());
+    }
+
+    #[test]
+    fn safetensors_layout_resolves_bare_name() {
+        let tmp = TempDir::new().unwrap();
+        touch(&tmp.path().join("safetensors/qwen.safetensors"));
+        assert_eq!(
+            resolve_path(tmp.path(), "qwen"),
+            Some(tmp.path().join("safetensors/qwen.safetensors"))
+        );
+        touch(&tmp.path().join("flat.safetensors"));
+        assert_eq!(
+            resolve_path(tmp.path(), "flat"),
+            Some(tmp.path().join("flat.safetensors"))
+        );
     }
 }

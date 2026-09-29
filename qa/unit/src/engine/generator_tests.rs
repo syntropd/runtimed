@@ -33,6 +33,7 @@ mod tests {
             image_base64: None,
             grammar_type: None,
             grammar: None,
+            reasoning_budget: None,
         }
     }
 

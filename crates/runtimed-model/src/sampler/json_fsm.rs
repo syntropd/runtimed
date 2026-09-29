@@ -10,17 +10,25 @@ const PHASE_EXPECT_COLON: usize = 4;
 const PHASE_EXPECT_KEY: usize = 5;
 const PHASE_AFTER_VALUE: usize = 6;
 const PHASE_FINISHED: usize = 7;
+const PHASE_TRUE_R: usize = 8;
+const PHASE_TRUE_U: usize = 9;
+const PHASE_TRUE_E: usize = 10;
+const PHASE_FALSE_A: usize = 11;
+const PHASE_FALSE_L: usize = 12;
+const PHASE_FALSE_S: usize = 13;
+const PHASE_FALSE_E: usize = 14;
+const PHASE_NULL_U: usize = 15;
+const PHASE_NULL_L1: usize = 16;
+const PHASE_NULL_L2: usize = 17;
 
-/// Compact state encoder for JSON structural parsing:
-/// `phase` (0..15) | `depth` (0..15) << 4 | `is_array` (0..1) << 8
 #[inline]
 fn encode_state(phase: usize, depth: usize, is_array: bool) -> usize {
-    phase | ((depth & 0xF) << 4) | (if is_array { 1 << 8 } else { 0 })
+    (phase & 0xFF) | ((depth & 0xFF) << 8) | (if is_array { 1 << 16 } else { 0 })
 }
 
 #[inline]
 fn decode_state(state: usize) -> (usize, usize, bool) {
-    (state & 0xF, (state >> 4) & 0xF, (state & (1 << 8)) != 0)
+    (state & 0xFF, (state >> 8) & 0xFF, (state & (1 << 16)) != 0)
 }
 
 /// JSON grammar state machine tracking strings, delimiters, objects, and arrays.
@@ -41,17 +49,13 @@ impl JsonFsm {
                     return Some(encode_state(phase, depth, is_array));
                 }
                 match byte {
-                    b'{' => {
-                        let next_d = (depth + 1).min(15);
-                        Some(encode_state(PHASE_EXPECT_KEY, next_d, false))
-                    }
-                    b'[' => {
-                        let next_d = (depth + 1).min(15);
-                        Some(encode_state(PHASE_EXPECT_VALUE, next_d, true))
-                    }
+                    b'{' => Some(encode_state(PHASE_EXPECT_KEY, (depth + 1).min(255), false)),
+                    b'[' => Some(encode_state(PHASE_EXPECT_VALUE, (depth + 1).min(255), true)),
                     b'"' => Some(encode_state(PHASE_IN_STRING, depth, is_array)),
                     b'0'..=b'9' | b'-' => Some(encode_state(PHASE_IN_NUMBER, depth, is_array)),
-                    b't' | b'f' | b'n' => Some(encode_state(PHASE_AFTER_VALUE, depth, is_array)),
+                    b't' => Some(encode_state(PHASE_TRUE_R, depth, is_array)),
+                    b'f' => Some(encode_state(PHASE_FALSE_A, depth, is_array)),
+                    b'n' => Some(encode_state(PHASE_NULL_U, depth, is_array)),
                     b']' if is_array && depth > 0 => {
                         let next_d = depth - 1;
                         let next_p = if next_d == 0 { PHASE_FINISHED } else { PHASE_AFTER_VALUE };
@@ -118,6 +122,25 @@ impl JsonFsm {
                 }
                 _ => None,
             },
+            PHASE_TRUE_R if byte == b'r' => Some(encode_state(PHASE_TRUE_U, depth, is_array)),
+            PHASE_TRUE_U if byte == b'u' => Some(encode_state(PHASE_TRUE_E, depth, is_array)),
+            PHASE_TRUE_E if byte == b'e' => {
+                let next_p = if depth == 0 { PHASE_FINISHED } else { PHASE_AFTER_VALUE };
+                Some(encode_state(next_p, depth, is_array))
+            }
+            PHASE_FALSE_A if byte == b'a' => Some(encode_state(PHASE_FALSE_L, depth, is_array)),
+            PHASE_FALSE_L if byte == b'l' => Some(encode_state(PHASE_FALSE_S, depth, is_array)),
+            PHASE_FALSE_S if byte == b's' => Some(encode_state(PHASE_FALSE_E, depth, is_array)),
+            PHASE_FALSE_E if byte == b'e' => {
+                let next_p = if depth == 0 { PHASE_FINISHED } else { PHASE_AFTER_VALUE };
+                Some(encode_state(next_p, depth, is_array))
+            }
+            PHASE_NULL_U if byte == b'u' => Some(encode_state(PHASE_NULL_L1, depth, is_array)),
+            PHASE_NULL_L1 if byte == b'l' => Some(encode_state(PHASE_NULL_L2, depth, is_array)),
+            PHASE_NULL_L2 if byte == b'l' => {
+                let next_p = if depth == 0 { PHASE_FINISHED } else { PHASE_AFTER_VALUE };
+                Some(encode_state(next_p, depth, is_array))
+            }
             PHASE_EXPECT_COLON => {
                 if is_ws {
                     Some(encode_state(phase, depth, is_array))
@@ -167,8 +190,8 @@ impl FsmGrammar for JsonFsm {
     }
 
     fn is_accepting(&self, state: usize) -> bool {
-        let (phase, _, _) = decode_state(state);
-        phase == PHASE_FINISHED
+        let (phase, depth, _) = decode_state(state);
+        phase == PHASE_FINISHED || (depth == 0 && phase == PHASE_IN_NUMBER)
     }
 
     fn step(&self, state: usize, bytes: &[u8]) -> GrammarTransition {
@@ -180,8 +203,8 @@ impl FsmGrammar for JsonFsm {
                 None => return GrammarTransition::Rejected,
             }
         }
-        let (phase, _, _) = decode_state(curr);
-        if phase == PHASE_FINISHED {
+        let (phase, depth, _) = decode_state(curr);
+        if phase == PHASE_FINISHED || (depth == 0 && phase == PHASE_IN_NUMBER) {
             GrammarTransition::Terminal
         } else {
             GrammarTransition::Accepted(curr)
@@ -202,6 +225,14 @@ mod tests {
         let s1 = match t1 { GrammarTransition::Accepted(s) => s, _ => 0 };
         let t2 = fsm.step(s1, b"123}");
         assert_eq!(t2, GrammarTransition::Terminal);
+    }
+
+    #[test]
+    fn test_json_literals() {
+        let fsm = JsonFsm::new();
+        let s0 = fsm.initial_state();
+        let t = fsm.step(s0, b"{\"a\":true,\"b\":false,\"c\":null}");
+        assert_eq!(t, GrammarTransition::Terminal);
     }
 
     #[test]

@@ -1,4 +1,7 @@
 //! Generation, speculative decoding, and embedding inference engines.
+//!
+//! Provides the core execution logic for text generation, constrained decoding,
+//! heterogeneous speculative acceleration, and reasoning budget management.
 
 pub mod embedder;
 pub mod generator;

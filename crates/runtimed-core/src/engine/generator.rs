@@ -28,6 +28,8 @@ pub struct GenerationRequest {
     pub grammar_type: Option<String>,
     #[serde(default)]
     pub grammar: Option<String>,
+    #[serde(default)]
+    pub reasoning_budget: Option<usize>,
 }
 
 fn default_top_p() -> f32 {
@@ -37,19 +39,13 @@ fn default_top_p() -> f32 {
 /// Output payload from a completed generation run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerationResult {
-    /// Generated output completion text.
     pub text: String,
-    /// Number of prompt tokens ingested.
     pub prompt_tokens: usize,
-    /// Number of completion tokens generated.
     pub completion_tokens: usize,
-    /// Reason generation stopped ("stop", "length", "preempted").
     pub finish_reason: String,
-    /// Total execution duration in milliseconds.
     pub duration_ms: u64,
 }
 
-/// SplitMix64: seedable uniform draws without a rand dependency.
 pub(super) struct Rng(pub(super) u64);
 
 impl Rng {
@@ -66,7 +62,6 @@ pub(super) fn entropy_seed() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x243F_6A88_85A3_08D3) | 1
 }
 
-/// Prompt ids for a text request. GGUF-BPE (Gemma4) models are turn-trained.
 fn text_prompt_ids(
     tokenizer: &EngineTokenizer,
     prompt: &str,
@@ -104,6 +99,34 @@ fn generate_guided_tokens(
     }
 }
 
+fn generate_with_budget(
+    session: &mut runtimed_model::Session,
+    entry: &EngineEntry,
+    prompt_ids: &[u32],
+    budget: usize,
+    reasoning_budget: usize,
+    req: &GenerationRequest,
+    mut rng: Rng,
+) -> Result<Vec<u32>, RuntimedError> {
+    use super::think_budget::{ThinkBudget, ThinkingPhase};
+    let end_id = entry.tokenizer.encode("</think>", false)
+        .ok()
+        .and_then(|v| v.first().copied())
+        .unwrap_or_else(|| entry.eos.first().copied().unwrap_or(0));
+    let mut tb = ThinkBudget::with_initial_phase(Some(reasoning_budget), end_id, ThinkingPhase::Thinking);
+    if let Ok(toks) = entry.tokenizer.encode("<think>", false) {
+        if let Some(&tid) = toks.first() { tb.set_think_token_id(tid); }
+    }
+    generate(session, prompt_ids, &entry.eos, budget, |logits| {
+        let mut row = logits.to_vec1::<f32>()?;
+        tb.enforce_logits(&mut row);
+        let masked = candle_core::Tensor::from_vec(row, logits.shape(), logits.device())?;
+        let tok = sample::sample(&masked, req.temperature, req.top_k, req.top_p, || rng.next_f32())?;
+        tb.step(tok);
+        Ok(tok)
+    }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
+}
+
 /// Executes token generation for a prompt against a loaded model.
 pub fn generate_tokens(
     entry: &EngineEntry,
@@ -121,9 +144,7 @@ pub fn generate_tokens(
             requested: prompt_ids.len(),
         });
     }
-    let budget = request
-        .max_tokens
-        .min(entry.meta.context_window - prompt_ids.len());
+    let budget = request.max_tokens.min(entry.meta.context_window - prompt_ids.len());
     if budget == 0 {
         return Ok(GenerationResult {
             text: String::new(),
@@ -134,25 +155,17 @@ pub fn generate_tokens(
         });
     }
 
-    let mut session = entry
-        .session
-        .lock()
-        .map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
+    let mut session = entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
         generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?
+    } else if let Some(rb) = request.reasoning_budget {
+        generate_with_budget(&mut *session, entry, &prompt_ids, budget, rb, request, rng)?
     } else {
         generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
-            sample::sample(
-                logits,
-                request.temperature,
-                request.top_k,
-                request.top_p,
-                || rng.next_f32(),
-            )
-        })
-        .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
+            sample::sample(logits, request.temperature, request.top_k, request.top_p, || rng.next_f32())
+        }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
     };
     drop(session);
 
@@ -160,8 +173,6 @@ pub fn generate_tokens(
     Ok(finish(entry, prompt_ids.len(), &ids, text, start))
 }
 
-/// Completion record shared by the text and multimodal paths, plus the
-/// audit log (counts only — prompts never leave the machine in logs).
 pub(super) fn finish(
     entry: &EngineEntry,
     prompt_tokens: usize,
@@ -177,13 +188,7 @@ pub(super) fn finish(
         finish_reason: if stopped { "stop".into() } else { "length".into() },
         duration_ms: start.elapsed().as_millis() as u64,
     };
-    tracing::info!(
-        model = %entry.meta.name,
-        prompt = prompt_tokens,
-        completion = ids.len(),
-        ms = result.duration_ms,
-        "generate"
-    );
+    tracing::info!(model = %entry.meta.name, prompt = prompt_tokens, completion = ids.len(), ms = result.duration_ms, "generate");
     result
 }
 
@@ -193,19 +198,14 @@ mod tests {
 
     fn gated_q4k() -> Option<std::path::PathBuf> {
         let path = std::path::PathBuf::from(std::env::var("SYNTROP_TEST_GGUF_Q4K").ok()?);
-        if !path.exists() {
-            eprintln!("skip: SYNTROP_TEST_GGUF_Q4K not set or missing");
-            return None;
-        }
+        if !path.exists() { return None; }
         Some(path)
     }
 
     #[test]
     fn rng_is_deterministic_per_seed() {
         let (mut a, mut b) = (Rng(42), Rng(42));
-        for _ in 0..8 {
-            assert_eq!(a.next_f32(), b.next_f32());
-        }
+        for _ in 0..8 { assert_eq!(a.next_f32(), b.next_f32()); }
         let mut c = Rng(42);
         let (x, y) = (c.next_f32(), c.next_f32());
         assert!((0.0..1.0).contains(&x) && (0.0..1.0).contains(&y));
@@ -220,13 +220,13 @@ mod tests {
     fn request_serde_applies_sampler_defaults() {
         let req: GenerationRequest = serde_json::from_value(serde_json::json!({
             "model": "m", "prompt": "p", "max_tokens": 8, "temperature": 0.0
-        }))
-        .unwrap();
+        })).unwrap();
         assert_eq!(req.top_p, 1.0);
         assert_eq!(req.top_k, 0);
         assert_eq!(req.seed, 0);
         assert_eq!(req.image_base64, None);
         assert_eq!(req.grammar_type, None);
+        assert_eq!(req.reasoning_budget, None);
     }
 
     #[test]
@@ -236,13 +236,9 @@ mod tests {
         let bpe = runtimed_gguf::GgufBpe::from_gguf(&file).expect("bpe");
         let tok = EngineTokenizer::Bpe(bpe);
         let ids = text_prompt_ids(&tok, "Say hello.", true).expect("prompt ids");
-        // Templated: BOS + <|turn> open the system turn (server-verified ids).
         assert_eq!(&ids[..2], &[2, 105]);
-        // Strictly richer than the raw encoding (regression: raw prompts
-        // made Gemma4 emit one empty end-of-turn token).
         let raw = tok.encode("Say hello.", true).expect("raw");
         assert!(ids.len() > raw.len() + 8);
         assert_ne!(ids, raw);
     }
 }
-

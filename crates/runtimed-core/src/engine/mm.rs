@@ -109,6 +109,7 @@ mod tests {
             image_base64: image.map(str::to_string),
             grammar_type: None,
             grammar: None,
+            reasoning_budget: None,
         }
     }
 

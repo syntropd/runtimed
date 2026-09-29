@@ -29,7 +29,7 @@ type GenerationResult (
   duration_ms: int
 )
 
-method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string) -> (result: GenerationResult)
+method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, reasoning_budget: ?int) -> (result: GenerationResult)
 method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
 method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
 method GetLoad() -> (available_slots: int, max_slots: int, used_bytes: int, models: []LoadedModel)
@@ -53,7 +53,7 @@ pub fn handle_service_call(method: &str, params: Option<&serde_json::Value>) -> 
         "org.varlink.service.GetInfo" => Some(VarlinkReply::ok(json!({
             "vendor": "Syntropd Project",
             "product": "runtimed",
-            "version": "0.1.0",
+            "version": env!("CARGO_PKG_VERSION"),
             "url": "https://github.com/syntropd/runtimed",
             "interfaces": [
                 "org.varlink.service",

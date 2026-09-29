@@ -3,6 +3,7 @@
 use crate::engine::generator::{finish, GenerationRequest, GenerationResult, Rng};
 use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
+use runtimed_model::decode::generate::last_row;
 use runtimed_model::decode::speculate::speculative_step;
 use std::time::Instant;
 
@@ -39,12 +40,15 @@ pub fn generate_speculative(
     // Prefill both sessions with the prompt
     target_session.reset();
     draft_session.reset();
-    target_session
+    let target_prefill = target_session
         .forward(&prompt_ids, 0)
         .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-    draft_session
+    let draft_prefill = draft_session
         .forward(&prompt_ids, 0)
         .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+
+    let mut target_head = last_row(&target_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+    let mut draft_head = last_row(&draft_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
 
     let seed = if request.seed == 0 {
         crate::engine::generator::entropy_seed()
@@ -60,11 +64,13 @@ pub fn generate_speculative(
         let remaining_budget = budget - generated.len();
         let k = k_draft.min(remaining_budget);
 
-        let step = speculative_step(
+        let (step, next_draft, next_target) = speculative_step(
             &mut *draft_session,
             &mut *target_session,
             current_pos,
             k,
+            &draft_head,
+            &target_head,
             &target_entry.eos,
             request.temperature,
             request.top_k,
@@ -75,6 +81,8 @@ pub fn generate_speculative(
 
         current_pos += step.tokens.len();
         generated.extend_from_slice(&step.tokens);
+        draft_head = next_draft;
+        target_head = next_target;
 
         if step.hit_eos {
             break;

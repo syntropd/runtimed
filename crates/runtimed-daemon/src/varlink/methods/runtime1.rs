@@ -136,6 +136,11 @@ impl Runtime1Handler {
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        let reasoning_budget = params
+            .get("reasoning_budget")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
         // Loading dequantizes gigabytes; keep it off the async executor.
         let manager = Arc::clone(&self.model_manager);
         let name_owned = model_name.to_string();
@@ -176,6 +181,7 @@ impl Runtime1Handler {
             image_base64,
             grammar_type,
             grammar,
+            reasoning_budget,
         };
 
         // Generation is synchronous CPU work; run it off the async executor.

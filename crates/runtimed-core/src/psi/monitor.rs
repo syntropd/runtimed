@@ -63,6 +63,33 @@ pub fn evaluate_and_shed_memory(manager: &ModelManager, some: f32, full: f32) ->
     }
 }
 
+/// Evaluates memory pressure with two-tier KV cache spilling and model shedding.
+pub fn evaluate_and_shed_with_spill(
+    manager: &ModelManager,
+    spiller: Option<&runtimed_model::cache::SpillManager>,
+    cache: Option<&mut runtimed_model::cache::PagedKvCache>,
+    some: f32,
+    full: f32,
+) -> bool {
+    let mut acted = false;
+    // Moderate stall (some > 10.0 or full > 2.0): spill L1 KV cache blocks to L2 host RAM
+    if some > 10.0 || full > 2.0 {
+        if let (Some(spill), Some(c)) = (spiller, cache) {
+            if let Ok(count) = spill.shed_pressure_spill(c, 0.5) {
+                if count > 0 {
+                    info!(spilled = count, "PSI pressure mitigation: spilled KV blocks to L2 host RAM");
+                    acted = true;
+                }
+            }
+        }
+    }
+    // Severe stall (some > 25.0 or full > 5.0): unload idle models
+    if evaluate_and_shed_memory(manager, some, full) {
+        acted = true;
+    }
+    acted
+}
+
 /// Spawns the PSI memory pressure watcher background task.
 pub fn spawn_psi_monitor(
     manager: Arc<ModelManager>,

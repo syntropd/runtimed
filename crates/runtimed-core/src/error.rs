@@ -39,6 +39,8 @@ pub enum RuntimedError {
     Io(#[from] std::io::Error),
 }
 
+pub type Result<T> = std::result::Result<T, RuntimedError>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

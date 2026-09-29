@@ -34,6 +34,14 @@ A **page** is one committed Rust file. Every page holds one idea, fits in one he
 - **The Performance Invariant**: **A change may not grow a page's binary weight (`bin_bytes`) or CPU heat (`heat_pct`) without a written justification in the commit message.**
 - **Pre-Release Validation**: Validate scorecard integrity with `qa/page_score_check.sh` before shipping (verifying full coverage, zero shim bytes, no misattributed foreign code $>50\text{ KB/line}$, and schema sanity).
 
+### Dynamic Runtime Invariants (Production SLA & Performance)
+Beyond static code sizing and compilation weights, all daemons in the subsystem must honor strict runtime performance thresholds:
+1. **Zero-Allocation Hot Paths (`alloc_rate == 0`)**: Heartbeat ticks (`sd_notify(WATCHDOG=1)`), systemd watchdog checks, PSI pressure reads (`/proc/pressure/memory`), and connection frame framing loops must allocate zero heap bytes during steady-state ticks. Stack buffers (`[u8; 128]`) and preallocated reuse buffers are mandatory.
+2. **Varlink IPC Round-Trip Latency Ceiling ($\le 5\text{ ms}$ p99)**: Control-plane Varlink IPC dispatch (`GetInfo`, `GetLoad`, `ListLoadedModels`, `GetModelStatus`, `AcquireLease`, `ReleaseLease`) over Unix domain sockets must execute within a strict P99 latency bound of $\le 5\text{ ms}$.
+3. **Control-Plane Memory Ceiling (RSS $\le 32\text{ MB}$)**: All non-tensor control-plane daemons (`routerd`, `inferenced`, `modeld`, `contextd`, `toold`, `systemd-sentry`) must operate under a steady-state RSS ceiling of $\le 32\text{ MB}$. Tensor-engine (`runtimed`) base daemon overhead outside resident weight buffers must not exceed $32\text{ MB}$.
+4. **Deterministic Preemption & Load-Shedding ($\le 1$ Tick)**: When PSI memory pressure spikes (`some > 25.0%` or `full > 5.0%`), proactive model/cache shedding must trigger within one sample window ($\le 5\text{s}$) without blocking Tokio worker threads or dropping active client sessions.
+5. **Continuous Benchmark Regression Guard**: Time-to-First-Token (TTFT) and decode throughput must be recorded via standardized benchmark runs (`routerctl benchmark` / `syntropctl`) and verified to ensure no regression across commits.
+
 ---
 
 ## 2. Pure Rust & Crash-Resilience Standards

@@ -25,6 +25,15 @@ A **page** is one committed Rust file. Every page holds one idea, fits in one he
   - State pages name what they own: `lease_table.rs`.
   - Boundary pages speak trust verbs: `verify`, `admit`, `attest`, `seal`, `enforce`, `audit`.
 
+### Scorecard & Performance Rules (Per-Page Performance)
+`qa/page_score.sh` generates `page-score.json` tracking four performance metrics per page:
+- **`lines`**: Source lines (exact).
+- **`bin_bytes`**: Shipped binary bytes attributed to the page from workspace rlibs (`nm` + debuginfo). Shims carry zero bytes.
+- **`heat_pct`**: Share of CPU execution samples under QA workloads (sampler + debuginfo).
+- **`reach`**: Other pages referencing it (blast radius, qualified by ancestor directory to prevent stem clashes).
+- **The Performance Invariant**: **A change may not grow a page's binary weight (`bin_bytes`) or CPU heat (`heat_pct`) without a written justification in the commit message.**
+- **Pre-Release Validation**: Validate scorecard integrity with `qa/page_score_check.sh` before shipping (verifying full coverage, zero shim bytes, no misattributed foreign code $>50\text{ KB/line}$, and schema sanity).
+
 ---
 
 ## 2. Pure Rust & Crash-Resilience Standards
@@ -108,3 +117,4 @@ Before any change is committed or marked complete:
 1. **Compilation**: Clean compilation with zero warnings under `cargo check --workspace`.
 2. **Page Rule Compliance**: `cargo test --workspace` must pass, including the `page_rule` integration test. No exemptions, no padding.
 3. **Structured Tracing**: No bare `println!` or `eprintln!` in daemons. All logging must use structured `tracing` macros with field keys.
+4. **Performance Integrity**: Validate scorecard integrity via `qa/page_score_check.sh`. No growth in a page's binary weight or CPU heat without written justification.

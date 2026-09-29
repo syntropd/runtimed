@@ -142,6 +142,12 @@ impl Weights {
             map.insert(mapped, t);
         }
 
+        if !map.contains_key("output.weight") {
+            if let Some(embd) = map.get("token_embd.weight") {
+                map.insert("output.weight".to_string(), embd.clone());
+            }
+        }
+
         Ok(Self::from_parts(dev.clone(), store, map))
     }
 

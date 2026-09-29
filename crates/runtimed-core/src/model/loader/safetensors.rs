@@ -22,18 +22,25 @@ pub fn load_safetensors_entry(
         runtimed_model::Arch::Qwen2 => "qwen2",
         runtimed_model::Arch::Gemma4 => "gemma4",
     };
+    let cfg_arc = Arc::new(cfg);
 
     let session = match file_opt {
-        Some(f) => Session::load_safetensors_from_file(f, Arc::new(cfg.clone()), device)
+        Some(f) => Session::load_safetensors_from_file(f, cfg_arc.clone(), device)
             .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?,
-        None => Session::load_safetensors(path, None, device)
-            .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?,
+        None => {
+            let weights = Arc::new(
+                runtimed_model::weights::Weights::load_safetensors(path, device)
+                    .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?,
+            );
+            Session::new(cfg_arc.clone(), weights)
+                .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
+        }
     };
 
     let params = count_safetensors_params(path, file_opt)?;
-    let (tokenizer, eos, add_special) = EngineTokenizer::load_for_safetensors(cfg.arch, path)?;
+    let (tokenizer, eos, add_special) = EngineTokenizer::load_for_safetensors(cfg_arc.arch, path)?;
 
-    let context = cfg.sliding_window.unwrap_or(8192);
+    let context = cfg_arc.sliding_window.unwrap_or(8192);
     let meta = LoadedModel {
         name: name.to_string(),
         architecture: arch_tag.to_string(),

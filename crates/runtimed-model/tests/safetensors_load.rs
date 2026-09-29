@@ -125,3 +125,47 @@ fn loads_safetensors_lora_and_fuses() {
     let fused_w = weights.get("blk.0.attn_q.weight").unwrap().to_vec2::<f32>().unwrap();
     assert_eq!(fused_w, vec![vec![3.0, 4.0], vec![5.0, 6.0]]);
 }
+
+#[test]
+fn loads_safetensors_with_tied_embeddings() {
+    let dev = Device::Cpu;
+    let mut tensors = HashMap::new();
+
+    let emb_data: Vec<u8> = vec![1.0f32, 2.0, 3.0, 4.0]
+        .into_iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
+    tensors.insert(
+        "model.embed_tokens.weight".to_string(),
+        safetensors::tensor::TensorView::new(Dtype::F32, vec![2, 2], &emb_data).unwrap(),
+    );
+
+    let serialized = serialize(&tensors, &None).unwrap();
+    let p = tmp("tied_emb");
+    fs::write(&p, serialized).unwrap();
+
+    let weights = Weights::load_safetensors(&p, &dev).unwrap();
+    let _ = fs::remove_file(&p);
+
+    assert!(weights.get("token_embd.weight").is_ok());
+    assert!(weights.get("output.weight").is_ok());
+    let out = weights.get("output.weight").unwrap().to_vec2::<f32>().unwrap();
+    assert_eq!(out, vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+}
+
+#[test]
+fn fp8_e5m2_dequantization_lut_correctness() {
+    use runtimed_model::weights::dequantize_fp8_e5m2;
+    // 0x00 is +0.0, 0x80 is -0.0
+    let res = dequantize_fp8_e5m2(&[0x00, 0x80]);
+    assert_eq!(res[0], 0.0);
+    assert_eq!(res[1], -0.0);
+
+    // 0x3c is 1.0 (sign 0, exp 15 (0b01111), mant 0)
+    let res = dequantize_fp8_e5m2(&[0x3c]);
+    assert_eq!(res[0], 1.0);
+
+    // 0x7c is +infinity (sign 0, exp 31, mant 0)
+    let res = dequantize_fp8_e5m2(&[0x7c]);
+    assert!(res[0].is_infinite() && res[0].is_sign_positive());
+}

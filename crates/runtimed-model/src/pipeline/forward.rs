@@ -100,8 +100,9 @@ fn execute_stage_layer(
     k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
 
     if let Some(cache) = stage_cache {
-        cache.append_kv(local_layer, &k, &v, dev)?;
-        if let Some((ak, av)) = cache.assemble_layer_kv(local_layer, dev)? {
+        let cl = if local_layer < cache.n_layer { local_layer } else { i };
+        cache.append_kv(cl, &k, &v, dev)?;
+        if let Some((ak, av)) = cache.assemble_layer_kv(cl, dev)? {
             k = ak;
             v = av;
         }

@@ -104,6 +104,29 @@ impl SpillManager {
         }
         Ok(restored)
     }
+
+    /// Restore spilled L2 blocks specifically belonging to a target accelerator device.
+    pub fn restore_device_blocks(
+        &self,
+        cache: &mut PagedKvCache,
+        device: &Device,
+        count: usize,
+    ) -> Result<usize> {
+        let mut restored = 0;
+        for block in &mut cache.blocks {
+            if restored >= count {
+                break;
+            }
+            if block.tier == StorageTier::L2PinnedHost && block.origin_device.same_device(device) {
+                block.k = block.k.to_device(&block.origin_device)?;
+                block.v = block.v.to_device(&block.origin_device)?;
+                block.device = block.origin_device.clone();
+                block.tier = StorageTier::L1Vram;
+                restored += 1;
+            }
+        }
+        Ok(restored)
+    }
 }
 
 #[cfg(test)]
@@ -155,7 +178,7 @@ mod tests {
         assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 1);
         assert_eq!(cache.count_tier_blocks(StorageTier::L2PinnedHost), 1);
 
-        let restored = manager.restore_origin_blocks(&mut cache, 1).unwrap();
+        let restored = manager.restore_device_blocks(&mut cache, &Device::Cpu, 1).unwrap();
         assert_eq!(restored, 1);
         assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 2);
     }

@@ -130,3 +130,13 @@ fn test_psi_factor_nan_and_high_pressure_safety() {
     assert_eq!(res_crit.phi_psi, 0.0);
     assert_eq!(res_crit.effort, ReasoningEffort::None);
 }
+
+#[test]
+fn test_all_zero_layers_veto() {
+    let spec = test_kv_spec();
+    let gpu0 = DeviceHeadroom::calculate("gpu0".into(), false, 0, 16 * 1024 * 1024 * 1024, &spec);
+    let gov = MultiGpuHeadroomGovernor::new(vec![gpu0], GangLinkType::NVLink, 0.0);
+    let res = gov.evaluate();
+    assert_eq!(res.effective_tokens, 0);
+    assert_eq!(res.effort, ReasoningEffort::None);
+}

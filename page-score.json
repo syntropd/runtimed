@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "f218330",
+ "rev": "14784f9",
  "dirty": true,
  "pages": [
   {
@@ -201,14 +201,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/governor/gang_governor.rs",
-   "lines": 136,
+   "lines": 137,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-core/src/governor/governor_tests.rs",
-   "lines": 132,
+   "lines": 142,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -663,7 +663,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/spill_manager.rs",
-   "lines": 162,
+   "lines": 185,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -796,7 +796,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
-   "lines": 128,
+   "lines": 129,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

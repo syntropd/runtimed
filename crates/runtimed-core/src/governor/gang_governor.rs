@@ -75,7 +75,8 @@ impl MultiGpuHeadroomGovernor {
     /// Evaluate headroom and compute effective token budget.
     pub fn evaluate(&self) -> GangHeadroomResult {
         let has_cpu = self.stages.iter().any(|s| s.is_cpu);
-        if self.stages.is_empty() || has_cpu {
+        let all_zero_layers = self.stages.iter().all(|s| s.assigned_layers == 0);
+        if self.stages.is_empty() || has_cpu || all_zero_layers {
             return GangHeadroomResult {
                 weakest_link_tokens: 0,
                 effective_tokens: 0,

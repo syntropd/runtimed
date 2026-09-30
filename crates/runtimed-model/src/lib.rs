@@ -20,8 +20,10 @@ pub mod vision;
 pub mod visual_gen;
 pub mod weights;
 
-pub use audio::{BufferSink, KokoroConfig, KokoroEngine, PcmSink, PwCatSink};
-pub use visual_gen::{create_sealed_memfd, VisualComputeLease, VisualGenConfig, VisualGenSampler};
+pub use audio::{AcousticNet, BufferSink, KokoroConfig, KokoroEngine, PcmSink, PwCatSink};
+pub use visual_gen::{
+    create_sealed_memfd, TurboUnet, VisualComputeLease, VisualGenConfig, VisualGenSampler,
+};
 
 pub use cache::{
     sink_causal_mask, CacheBlock, PagedKvCache, SinkWindowCache, SinkWindowConfig, SpillManager,

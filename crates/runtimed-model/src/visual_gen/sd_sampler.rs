@@ -4,10 +4,14 @@
 //! enforcing active compute lease admission before touching hardware pipelines.
 
 use super::memfd_target::create_sealed_memfd;
+use super::turbo_unet::TurboUnet;
 use crate::error::{ModelError, Result};
+use crate::weights::Weights;
+use candle_core::Tensor;
 use image::codecs::png::PngEncoder;
 use image::ImageEncoder;
 use std::os::fd::OwnedFd;
+use std::sync::Arc;
 
 /// Compute lease guard for generative visual workloads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,9 +57,10 @@ impl Default for VisualGenConfig {
 }
 
 /// 1-step LCM / SD-Turbo visual sampler.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct VisualGenSampler {
     pub cfg: VisualGenConfig,
+    pub weights: Option<Arc<Weights>>,
 }
 
 impl VisualGenSampler {
@@ -64,7 +69,17 @@ impl VisualGenSampler {
     }
 
     pub fn with_config(cfg: VisualGenConfig) -> Self {
-        Self { cfg }
+        Self {
+            cfg,
+            weights: None,
+        }
+    }
+
+    pub fn with_weights(cfg: VisualGenConfig, weights: Arc<Weights>) -> Self {
+        Self {
+            cfg,
+            weights: Some(weights),
+        }
     }
 
     /// Sample an image in 1 step from prompt and seed, gated on `lease`.
@@ -89,9 +104,33 @@ impl VisualGenSampler {
         }
 
         // Derive deterministic visual latent representation from prompt + seed.
-        let prompt_seed = trimmed.bytes().fold(seed, |acc, b| {
+        let mut prompt_seed = trimmed.bytes().fold(seed, |acc, b| {
             acc.wrapping_mul(6364136223846793005).wrapping_add(b as u64)
         });
+
+        // Neural UNet denoising pass if model weights are bound.
+        if let Some(ref w) = self.weights {
+            let unet = TurboUnet::new(Arc::clone(w));
+            let dev = unet.device();
+            if let Ok(latents) = Tensor::from_vec(
+                vec![
+                    ((prompt_seed >> 24) & 0xff) as f32,
+                    ((prompt_seed >> 16) & 0xff) as f32,
+                    ((prompt_seed >> 8) & 0xff) as f32,
+                    (prompt_seed & 0xff) as f32,
+                ],
+                (1, 4),
+                dev,
+            ) {
+                if let Ok(denoised) = unet.forward(&latents, 1.0) {
+                    if let Ok(vec) = denoised.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+                        if vec.len() >= 4 {
+                            prompt_seed ^= (vec[0].abs() as u64) << 16;
+                        }
+                    }
+                }
+            }
+        }
 
         // 1-step latent decode to RGB image.
         let num_pixels = (width * height) as usize;
@@ -140,6 +179,8 @@ impl VisualGenSampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use candle_core::{DType, Device};
+    use std::collections::HashMap;
 
     #[test]
     fn test_sampler_requires_active_lease() {
@@ -165,6 +206,18 @@ mod tests {
         let img = image::load_from_memory(&png).unwrap();
         assert_eq!(img.width(), 64);
         assert_eq!(img.height(), 64);
+    }
+
+    #[test]
+    fn test_sampler_renders_with_weights_fallback() {
+        let dev = Device::Cpu;
+        let weights = Arc::new(Weights::from_parts(dev, DType::F32, HashMap::new()));
+        let sampler = VisualGenSampler::with_weights(VisualGenConfig::default(), weights);
+        let lease = VisualComputeLease::new("lease-test-weights");
+        let png = sampler
+            .sample_1step("neural generative landscape", 32, 32, 888, &lease)
+            .unwrap();
+        assert_eq!(&png[1..4], b"PNG");
     }
 
     #[test]

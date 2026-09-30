@@ -16,9 +16,9 @@ mod tests {
     #[tokio::test]
     async fn test_multimedia_exports_exist() {
         let none_param: Option<&serde_json::Value> = None;
-        let reply_audio = handle_stream_audio_out(none_param).await;
+        let reply_audio = handle_stream_audio_out(none_param, None).await;
         assert!(reply_audio.error.is_some());
-        let reply_visual = handle_generate_visual(none_param).await;
+        let reply_visual = handle_generate_visual(none_param, None).await;
         assert!(reply_visual.error.is_some());
     }
 }

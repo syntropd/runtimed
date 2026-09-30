@@ -35,6 +35,8 @@ pub struct EngineEntry {
     pub add_special: bool,
     /// Attached vision tower (`attach_vision`); `None` means text-only.
     pub vision: RwLock<Option<VisionTower>>,
+    /// L2 host prefix cache for projected soft tokens and KV layers.
+    pub image_cache: RwLock<runtimed_model::cache::image_cache::ImageCache>,
 }
 
 /// Numeric GGUF metadata that may sit in a U32/U64/I32 slot.

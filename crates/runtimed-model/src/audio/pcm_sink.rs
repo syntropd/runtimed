@@ -5,25 +5,34 @@
 //!   preserving `$XDG_RUNTIME_DIR` and `$PIPEWIRE_RUNTIME_DIR`.
 //! - `BufferSink`: Captures raw PCM bytes in memory for deterministic unit testing.
 
-use std::io::{self, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::io;
+use tokio::io::AsyncWriteExt;
+use tokio::process::{Child, ChildStdin, Command};
 
 /// Sink receiving 24kHz S16LE mono audio PCM.
 pub trait PcmSink: Send + Sync {
     /// Write 16-bit signed PCM samples.
-    fn write_pcm(&mut self, samples: &[i16]) -> io::Result<()> {
-        let mut bytes = Vec::with_capacity(samples.len() * 2);
-        for &s in samples {
-            bytes.extend_from_slice(&s.to_le_bytes());
+    fn write_pcm(
+        &mut self,
+        samples: &[i16],
+    ) -> impl std::future::Future<Output = io::Result<()>> + Send {
+        async move {
+            let mut bytes = Vec::with_capacity(samples.len() * 2);
+            for &s in samples {
+                bytes.extend_from_slice(&s.to_le_bytes());
+            }
+            self.write_bytes(&bytes).await
         }
-        self.write_bytes(&bytes)
     }
 
     /// Write raw little-endian PCM bytes.
-    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()>;
+    fn write_bytes(
+        &mut self,
+        bytes: &[u8],
+    ) -> impl std::future::Future<Output = io::Result<()>> + Send;
 
     /// Flush pending audio data to the backend.
-    fn flush(&mut self) -> io::Result<()>;
+    fn flush(&mut self) -> impl std::future::Future<Output = io::Result<()>> + Send;
 }
 
 /// Buffer sink storing PCM audio in memory for unit testing and offline capture.
@@ -58,12 +67,12 @@ impl BufferSink {
 }
 
 impl PcmSink for BufferSink {
-    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+    async fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.buffer.extend_from_slice(bytes);
         Ok(())
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    async fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -83,9 +92,10 @@ impl PwCatSink {
     pub fn spawn_with_path(bin_path: &str) -> io::Result<Self> {
         let mut cmd = Command::new(bin_path);
         cmd.args(["--playback", "--format=s16", "--rate=24000", "--channels=1", "-"]);
-        cmd.stdin(Stdio::piped());
-        cmd.stdout(Stdio::null());
-        cmd.stderr(Stdio::null());
+        cmd.stdin(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        cmd.kill_on_drop(true);
 
         if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
             cmd.env("XDG_RUNTIME_DIR", xdg);
@@ -107,40 +117,27 @@ impl PwCatSink {
     }
 
     /// Wait for pw-cat playback to finish, draining all buffered audio cleanly.
-    pub fn finish(mut self) -> io::Result<std::process::ExitStatus> {
+    pub async fn finish(mut self) -> io::Result<std::process::ExitStatus> {
         if let Some(mut stdin) = self.stdin.take() {
-            let _ = stdin.flush();
+            let _ = stdin.flush().await;
             drop(stdin);
         }
-        self.child.wait()
+        self.child.wait().await
     }
 }
 
 impl PcmSink for PwCatSink {
-    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+    async fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
         match &mut self.stdin {
-            Some(stdin) => stdin.write_all(bytes),
+            Some(stdin) => stdin.write_all(bytes).await,
             None => Err(io::Error::new(io::ErrorKind::BrokenPipe, "pw-cat stdin closed")),
         }
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    async fn flush(&mut self) -> io::Result<()> {
         match &mut self.stdin {
-            Some(stdin) => stdin.flush(),
+            Some(stdin) => stdin.flush().await,
             None => Ok(()),
-        }
-    }
-}
-
-impl Drop for PwCatSink {
-    fn drop(&mut self) {
-        if let Some(mut stdin) = self.stdin.take() {
-            let _ = stdin.flush();
-            drop(stdin);
-        }
-        if let Ok(None) = self.child.try_wait() {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
         }
     }
 }
@@ -149,16 +146,16 @@ impl Drop for PwCatSink {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_buffer_sink_write_and_samples() {
+    #[tokio::test]
+    async fn test_buffer_sink_write_and_samples() {
         let mut sink = BufferSink::new();
-        sink.write_pcm(&[100, -200, 300]).unwrap();
+        sink.write_pcm(&[100, -200, 300]).await.unwrap();
         assert_eq!(sink.buffer().len(), 6);
         assert_eq!(sink.samples(), vec![100, -200, 300]);
 
-        sink.write_bytes(&400i16.to_le_bytes()).unwrap();
+        sink.write_bytes(&400i16.to_le_bytes()).await.unwrap();
         assert_eq!(sink.samples(), vec![100, -200, 300, 400]);
-        sink.flush().unwrap();
+        sink.flush().await.unwrap();
     }
 
     #[test]
@@ -167,12 +164,12 @@ mod tests {
         assert!(res.is_err());
     }
 
-    #[test]
-    fn test_pw_cat_sink_finish_and_lifecycle() {
+    #[tokio::test]
+    async fn test_pw_cat_sink_finish_and_lifecycle() {
         if std::path::Path::new("/usr/bin/true").exists() {
             let mut sink = PwCatSink::spawn_with_path("/usr/bin/true").unwrap();
-            let _ = sink.write_pcm(&[10, 20, 30]);
-            let status = sink.finish().unwrap();
+            let _ = sink.write_pcm(&[10, 20, 30]).await;
+            let status = sink.finish().await.unwrap();
             assert!(status.success());
         }
     }

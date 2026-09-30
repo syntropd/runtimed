@@ -133,6 +133,7 @@ impl ModelManager {
             eos,
             add_special,
             vision: RwLock::new(None),
+            image_cache: RwLock::new(runtimed_model::cache::image_cache::ImageCache::new(16)),
         });
         tracing::info!(model = %meta.name, backend = %meta.compute_backend, bytes = meta.memory_bytes, "load");
         lock.insert(name.to_string(), Arc::clone(&entry));

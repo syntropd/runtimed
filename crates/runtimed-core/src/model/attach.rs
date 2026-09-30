@@ -35,6 +35,9 @@ impl ModelManager {
             .write()
             .map_err(|_| RuntimedError::GenerationFailed("vision lock poisoned".into()))?;
         *slot = Some(tower);
+        if let Ok(mut cache) = entry.image_cache.write() {
+            cache.clear();
+        }
         tracing::info!(model = %entry.meta.name, mmproj = %mmproj, "attach-vision");
         Ok(entry.meta.clone())
     }

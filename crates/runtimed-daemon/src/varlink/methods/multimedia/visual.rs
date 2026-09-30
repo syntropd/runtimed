@@ -1,14 +1,36 @@
 //! Varlink RPC handler for io.syntrop.Runtime1.GenerateVisual.
 //!
 //! Generates visual output via 1-step SD-Turbo / LCM sampler into
-//! an immutably sealed memfd buffer under compute lease gating.
+//! an atomically written PNG file in runtime storage under compute lease gating.
 
 use crate::varlink::server::protocol::VarlinkReply;
-use runtimed_model::visual_gen::{VisualComputeLease, VisualGenSampler};
+use runtimed_core::model::ModelManager;
+use runtimed_model::visual_gen::{VisualComputeLease, VisualGenConfig, VisualGenSampler};
 use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+/// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> std::env::temp_dir().
+fn resolve_runtime_dir() -> PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
+        let p = PathBuf::from(xdg.trim());
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+    let uid = rustix::process::getuid().as_raw();
+    let run_user = PathBuf::from(format!("/run/user/{uid}"));
+    if run_user.exists() {
+        return run_user;
+    }
+    std::env::temp_dir()
+}
 
 /// Handles io.syntrop.Runtime1.GenerateVisual method invocations.
-pub async fn handle_generate_visual(params: Option<&Value>) -> VarlinkReply {
+pub async fn handle_generate_visual(
+    params: Option<&Value>,
+    manager: Option<&Arc<ModelManager>>,
+) -> VarlinkReply {
     let params = match params {
         Some(p) => p,
         None => {
@@ -51,26 +73,87 @@ pub async fn handle_generate_visual(params: Option<&Value>) -> VarlinkReply {
         );
     }
 
-    let sampler = VisualGenSampler::with_config(runtimed_model::visual_gen::VisualGenConfig {
+    let cfg = VisualGenConfig {
         default_width: width,
         default_height: height,
         steps,
-    });
-    let lease = VisualComputeLease::new(lease_id);
+    };
 
-    match sampler.generate_to_sealed_memfd(prompt, width, height, seed, &lease) {
-        Ok((_fd, bytes)) => VarlinkReply::ok(json!({
-            "bytes": bytes,
-            "width": width,
-            "height": height,
-            "format": "png",
-            "memfd_sealed": true,
-        })),
-        Err(e) => VarlinkReply::err(
+    // If a model is loaded in manager, bind its weights to VisualGenSampler.
+    let sampler = if let Some(mgr) = manager {
+        let model_name = params.get("model").and_then(|m| m.as_str()).unwrap_or("sd-turbo");
+        if let Some(entry) = mgr.get_entry(model_name) {
+            let weights = {
+                if let Ok(sess) = entry.session.lock() {
+                    Some(Arc::clone(sess.weights()))
+                } else {
+                    None
+                }
+            };
+            if let Some(w) = weights {
+                VisualGenSampler::with_weights(cfg, w)
+            } else {
+                VisualGenSampler::with_config(cfg)
+            }
+        } else {
+            VisualGenSampler::with_config(cfg)
+        }
+    } else {
+        VisualGenSampler::with_config(cfg)
+    };
+
+    let lease = VisualComputeLease::new(lease_id);
+    let png_bytes = match sampler.sample_1step(prompt, width, height, seed, &lease) {
+        Ok(b) => b,
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": format!("visual generation failed: {e}") })),
+            )
+        }
+    };
+
+    // Atomic write to $RUNTIME_DIR/syntrop/visual_gen/{id}.png
+    let out_dir = resolve_runtime_dir().join("syntrop").join("visual_gen");
+    if let Err(e) = std::fs::create_dir_all(&out_dir) {
+        return VarlinkReply::err(
             "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("visual generation failed: {e}") })),
-        ),
+            Some(json!({ "reason": format!("failed to create output dir: {e}") })),
+        );
     }
+
+    let id = format!(
+        "{:016x}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        seed
+    );
+    let final_path = out_dir.join(format!("{id}.png"));
+    let tmp_path = out_dir.join(format!(".{id}.tmp"));
+
+    if let Err(e) = std::fs::write(&tmp_path, &png_bytes) {
+        return VarlinkReply::err(
+            "io.syntrop.Runtime1.GenerationFailed",
+            Some(json!({ "reason": format!("failed to write temporary visual file: {e}") })),
+        );
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return VarlinkReply::err(
+            "io.syntrop.Runtime1.GenerationFailed",
+            Some(json!({ "reason": format!("failed to commit visual file: {e}") })),
+        );
+    }
+
+    VarlinkReply::ok(json!({
+        "image_path": final_path.to_string_lossy(),
+        "bytes": png_bytes.len(),
+        "width": width,
+        "height": height,
+        "format": "png",
+    }))
 }
 
 #[cfg(test)]
@@ -85,20 +168,22 @@ mod tests {
             "height": 64,
             "seed": 42
         });
-        let reply = handle_generate_visual(Some(&params)).await;
+        let reply = handle_generate_visual(Some(&params), None).await;
         assert!(reply.error.is_none());
         let res = reply.parameters.unwrap();
         assert_eq!(res["width"], 64);
         assert_eq!(res["height"], 64);
         assert_eq!(res["format"], "png");
-        assert_eq!(res["memfd_sealed"], true);
         assert!(res["bytes"].as_u64().unwrap() > 0);
+        let path_str = res["image_path"].as_str().unwrap();
+        assert!(std::path::Path::new(path_str).exists());
+        let _ = std::fs::remove_file(path_str);
     }
 
     #[tokio::test]
     async fn test_generate_visual_missing_prompt() {
         let params = json!({ "width": 64 });
-        let reply = handle_generate_visual(Some(&params)).await;
+        let reply = handle_generate_visual(Some(&params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }
 
@@ -108,7 +193,7 @@ mod tests {
             "prompt": "neon city",
             "steps": 0
         });
-        let reply = handle_generate_visual(Some(&bad_params)).await;
+        let reply = handle_generate_visual(Some(&bad_params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
 
         let ok_params = json!({
@@ -117,7 +202,10 @@ mod tests {
             "height": 32,
             "steps": 2
         });
-        let ok_reply = handle_generate_visual(Some(&ok_params)).await;
+        let ok_reply = handle_generate_visual(Some(&ok_params), None).await;
         assert!(ok_reply.error.is_none());
+        let res = ok_reply.parameters.unwrap();
+        let path_str = res["image_path"].as_str().unwrap();
+        let _ = std::fs::remove_file(path_str);
     }
 }

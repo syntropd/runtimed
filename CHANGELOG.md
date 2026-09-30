@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.7 (2026-09-30) — Async Audio Streaming, Atomic Visuals & Neural Weights
+
+- **Async Non-blocking Audio I/O**: Refactored `PcmSink` to async trait methods (`write_pcm`, `write_bytes`, `flush`) and `PwCatSink` to `tokio::process::Command` with `kill_on_drop(true)` and non-blocking asynchronous `finish()` drain. `KokoroEngine::synthesize` is generic async over `<S: PcmSink + ?Sized>`.
+- **Closed-FD Defect Fix in GenerateVisual**: Replaced ephemeral memfd return with robust host runtime directory resolution (`$XDG_RUNTIME_DIR` -> `/run/user/<uid>` -> `temp_dir`), atomically rendering PNG images to `$RUNTIME_DIR/syntrop/visual_gen/{id}.png` and returning `image_path` in Varlink reply.
+- **Multimodal Soft Token ImageCache Wiring**: Extended `ImageCache` to store projected soft tokens and token counts in host RAM (CPU). `generate_mm_tokens` queries cache by `(model_name, 0, image_bytes)` to bypass ViT lock and forward encoding on cache hit; `attach_vision` clears cache upon tower replacement.
+- **Neural Model Weights Integration**: Added `turbo_unet.rs` for SD-Turbo diffusion latent forward passes and `acoustic_net.rs` for Kokoro TTS acoustic forward passes, binding model weights to `VisualGenSampler` and `KokoroEngine` with procedural fallback for offline operation. Passed `model_manager` into multimedia handlers in `runtime1.rs`.
+
 ## 0.5.6 (2026-09-30) — Multimedia Memory & Pipeline
 
 - **Vectorized Spatial Patch Pooling**: Zero-panic strided reshape + mean reduction patch pooling with symmetric edge replication padding supporting arbitrary 2x2, 3x3, and 4x4 visual token grids.

@@ -35,7 +35,7 @@ method GetModelStatus(model: string) -> (status: string, model: ?LoadedModel)
 method UnloadModel(model: string) -> (freed_bytes: int)
 method ListLoadedModels() -> (models: []LoadedModel)
 method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (bytes_streamed: int, sample_rate: int, channels: int)
-method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (bytes: int, width: int, height: int, format: string, memfd_sealed: bool)
+method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (image_path: string, bytes: int, width: int, height: int, format: string)
 
 error ModelNotFound(model: string)
 error ContextExceeded(requested: int, max: int)
@@ -125,7 +125,7 @@ Streams synthesized 24kHz S16LE PCM speech directly to PipeWire or returns bytes
   - `channels` (int): Channel count (1, mono).
 
 ### 2.10 `GenerateVisual`
-Executes 1-step visual generation into an immutably sealed memfd buffer under compute lease gating.
+Executes 1-step visual generation into an atomically committed PNG file in runtime storage under compute lease gating.
 - Parameters:
   - `prompt` (string): Image description prompt.
   - `width` (?int, optional): Image width in pixels (default 512).
@@ -134,9 +134,9 @@ Executes 1-step visual generation into an immutably sealed memfd buffer under co
   - `steps` (?int, optional): Diffusion/LCM step count (default 1).
   - `lease_id` (?string, optional): Active compute lease identifier.
 - Returns:
+  - `image_path` (string): Path to generated PNG file on host runtime storage.
   - `bytes` (int): Size of generated PNG buffer.
   - `width` (int): Result image width.
   - `height` (int): Result image height.
   - `format` (string): Image encoding format ("png").
-  - `memfd_sealed` (bool): True if delivered via sealed memfd.
 

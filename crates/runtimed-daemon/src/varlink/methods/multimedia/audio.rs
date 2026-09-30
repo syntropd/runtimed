@@ -4,11 +4,16 @@
 //! directly to PipeWire (`pw-cat`) or an in-memory buffer.
 
 use crate::varlink::server::protocol::VarlinkReply;
+use runtimed_core::model::ModelManager;
 use runtimed_model::audio::{BufferSink, KokoroConfig, KokoroEngine, PwCatSink};
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 /// Handles io.syntrop.Runtime1.StreamAudioOut method invocations.
-pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
+pub async fn handle_stream_audio_out(
+    params: Option<&Value>,
+    manager: Option<&Arc<ModelManager>>,
+) -> VarlinkReply {
     let params = match params {
         Some(p) => p,
         None => {
@@ -32,21 +37,40 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
     let voice = params.get("voice").and_then(|v| v.as_str());
     let sink_type = params.get("sink_type").and_then(|s| s.as_str()).unwrap_or("auto");
 
-    let engine = KokoroEngine::new(KokoroConfig::default());
+    let engine = if let Some(mgr) = manager {
+        let model_name = params.get("model").and_then(|m| m.as_str()).unwrap_or("kokoro");
+        if let Some(entry) = mgr.get_entry(model_name) {
+            let weights = {
+                if let Ok(sess) = entry.session.lock() {
+                    Some(Arc::clone(sess.weights()))
+                } else {
+                    None
+                }
+            };
+            if let Some(w) = weights {
+                KokoroEngine::with_weights(KokoroConfig::default(), w)
+            } else {
+                KokoroEngine::new(KokoroConfig::default())
+            }
+        } else {
+            KokoroEngine::new(KokoroConfig::default())
+        }
+    } else {
+        KokoroEngine::new(KokoroConfig::default())
+    };
+
     let mut buffer_sink = BufferSink::new();
 
     let bytes = match sink_type {
-        "buffer" => {
-            match engine.synthesize(text, voice, &mut buffer_sink) {
-                Ok(b) => b,
-                Err(e) => {
-                    return VarlinkReply::err(
-                        "io.syntrop.Runtime1.GenerationFailed",
-                        Some(json!({ "reason": format!("tts failed: {e}") })),
-                    )
-                }
+        "buffer" => match engine.synthesize(text, voice, &mut buffer_sink).await {
+            Ok(b) => b,
+            Err(e) => {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": format!("tts failed: {e}") })),
+                )
             }
-        }
+        },
         "pipewire" => {
             let mut pw_sink = match PwCatSink::spawn() {
                 Ok(s) => s,
@@ -57,7 +81,7 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
                     )
                 }
             };
-            let bytes = match engine.synthesize(text, voice, &mut pw_sink) {
+            let bytes = match engine.synthesize(text, voice, &mut pw_sink).await {
                 Ok(b) => b,
                 Err(e) => {
                     return VarlinkReply::err(
@@ -66,7 +90,7 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
                     )
                 }
             };
-            if let Err(e) = pw_sink.finish() {
+            if let Err(e) = pw_sink.finish().await {
                 return VarlinkReply::err(
                     "io.syntrop.Runtime1.GenerationFailed",
                     Some(json!({ "reason": format!("pw-cat playback wait failed: {e}") })),
@@ -77,25 +101,23 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
         _ => {
             // Auto mode: attempt pw-cat, fall back to buffer sink cleanly.
             if let Ok(mut pw_sink) = PwCatSink::spawn() {
-                match engine.synthesize(text, voice, &mut pw_sink) {
+                match engine.synthesize(text, voice, &mut pw_sink).await {
                     Ok(b) => {
-                        let _ = pw_sink.finish();
+                        let _ = pw_sink.finish().await;
                         b
                     }
-                    Err(_) => {
-                        match engine.synthesize(text, voice, &mut buffer_sink) {
-                            Ok(b) => b,
-                            Err(e) => {
-                                return VarlinkReply::err(
-                                    "io.syntrop.Runtime1.GenerationFailed",
-                                    Some(json!({ "reason": format!("tts failed: {e}") })),
-                                )
-                            }
+                    Err(_) => match engine.synthesize(text, voice, &mut buffer_sink).await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return VarlinkReply::err(
+                                "io.syntrop.Runtime1.GenerationFailed",
+                                Some(json!({ "reason": format!("tts failed: {e}") })),
+                            )
                         }
-                    }
+                    },
                 }
             } else {
-                match engine.synthesize(text, voice, &mut buffer_sink) {
+                match engine.synthesize(text, voice, &mut buffer_sink).await {
                     Ok(b) => b,
                     Err(e) => {
                         return VarlinkReply::err(
@@ -126,7 +148,7 @@ mod tests {
             "voice": "af_bella",
             "sink_type": "buffer"
         });
-        let reply = handle_stream_audio_out(Some(&params)).await;
+        let reply = handle_stream_audio_out(Some(&params), None).await;
         assert!(reply.error.is_none());
         let res = reply.parameters.unwrap();
         assert_eq!(res["sample_rate"], 24000);
@@ -137,7 +159,7 @@ mod tests {
     #[tokio::test]
     async fn test_stream_audio_out_missing_text() {
         let params = json!({ "voice": "af_bella" });
-        let reply = handle_stream_audio_out(Some(&params)).await;
+        let reply = handle_stream_audio_out(Some(&params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }
 }

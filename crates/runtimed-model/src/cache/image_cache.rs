@@ -37,6 +37,24 @@ impl ImageCacheKey {
     }
 }
 
+/// A cached projected soft tokens entry resident in host memory (CPU).
+#[derive(Clone)]
+pub struct SoftTokensEntry {
+    pub tokens: Tensor,
+    pub num_tokens: usize,
+}
+
+impl SoftTokensEntry {
+    /// Create a new soft tokens entry on CPU.
+    pub fn new(tokens: &Tensor, num_tokens: usize) -> Result<Self> {
+        let cpu_tokens = tokens.to_device(&Device::Cpu)?;
+        Ok(Self {
+            tokens: cpu_tokens,
+            num_tokens,
+        })
+    }
+}
+
 /// A cached visual KV entry resident in host memory (CPU).
 #[derive(Clone)]
 pub struct VisualKvEntry {
@@ -69,6 +87,7 @@ impl VisualKvEntry {
 /// L2 Host memory prefix cache for visual KV blocks.
 pub struct ImageCache {
     entries: HashMap<ImageCacheKey, VisualKvEntry>,
+    soft_entries: HashMap<ImageCacheKey, SoftTokensEntry>,
     capacity: usize,
 }
 
@@ -76,6 +95,7 @@ impl ImageCache {
     pub fn new(capacity: usize) -> Self {
         Self {
             entries: HashMap::new(),
+            soft_entries: HashMap::new(),
             capacity: if capacity == 0 { 16 } else { capacity },
         }
     }
@@ -88,8 +108,19 @@ impl ImageCache {
         self.entries.is_empty()
     }
 
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.soft_entries.clear();
+    }
+
     pub fn get(&self, key: &ImageCacheKey) -> Option<&VisualKvEntry> {
         self.entries.get(key)
+    }
+
+    pub fn get_soft_tokens(&self, key: &ImageCacheKey) -> Option<(Tensor, usize)> {
+        self.soft_entries
+            .get(key)
+            .map(|e| (e.tokens.clone(), e.num_tokens))
     }
 
     pub fn insert(&mut self, key: ImageCacheKey, entry: VisualKvEntry) -> Result<()> {
@@ -99,6 +130,22 @@ impl ImageCache {
             }
         }
         self.entries.insert(key, entry);
+        Ok(())
+    }
+
+    pub fn insert_soft_tokens(
+        &mut self,
+        key: ImageCacheKey,
+        tokens: &Tensor,
+        num_tokens: usize,
+    ) -> Result<()> {
+        let entry = SoftTokensEntry::new(tokens, num_tokens)?;
+        if self.soft_entries.len() >= self.capacity && !self.soft_entries.contains_key(&key) {
+            if let Some(first_key) = self.soft_entries.keys().next().cloned() {
+                self.soft_entries.remove(&first_key);
+            }
+        }
+        self.soft_entries.insert(key, entry);
         Ok(())
     }
 
@@ -118,11 +165,7 @@ impl ImageCache {
     }
 
     /// Splice cached visual KV blocks into an active inference session.
-    pub fn splice_into_session(
-        &self,
-        key: &ImageCacheKey,
-        session: &mut Session,
-    ) -> Result<bool> {
+    pub fn splice_into_session(&self, key: &ImageCacheKey, session: &mut Session) -> Result<bool> {
         if let Some(entry) = self.entries.get(key) {
             session.splice_visual_kv(&entry.layers)?;
             Ok(true)
@@ -144,6 +187,22 @@ mod tests {
         let key3 = ImageCacheKey::from_image_bytes("gemma4", 42, b"other_data");
         assert_eq!(key1, key2);
         assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_image_cache_soft_tokens() {
+        let dev = Device::Cpu;
+        let mut cache = ImageCache::new(4);
+        let key = ImageCacheKey::from_image_bytes("qwen2", 0, b"fake_png_data");
+        let tokens = Tensor::zeros((1, 8, 16), DType::F32, &dev).unwrap();
+
+        cache.insert_soft_tokens(key.clone(), &tokens, 8).unwrap();
+        let (cached, num) = cache.get_soft_tokens(&key).unwrap();
+        assert_eq!(num, 8);
+        assert_eq!(cached.dims(), &[1, 8, 16]);
+
+        cache.clear();
+        assert!(cache.get_soft_tokens(&key).is_none());
     }
 
     #[test]

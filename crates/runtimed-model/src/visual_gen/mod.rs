@@ -5,9 +5,11 @@
 
 pub mod memfd_target;
 pub mod sd_sampler;
+pub mod turbo_unet;
 
 pub use memfd_target::create_sealed_memfd;
 pub use sd_sampler::{VisualComputeLease, VisualGenConfig, VisualGenSampler};
+pub use turbo_unet::TurboUnet;
 
 #[cfg(test)]
 mod tests {

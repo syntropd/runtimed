@@ -100,6 +100,10 @@ impl Session {
         self.w.device()
     }
 
+    pub fn weights(&self) -> &Arc<Weights> {
+        &self.w
+    }
+
     pub fn resident_bytes(&self) -> usize {
         self.w.resident_bytes()
     }

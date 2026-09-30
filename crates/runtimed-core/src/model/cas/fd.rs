@@ -72,8 +72,8 @@ pub fn fetch_model_fd(model_id: &str) -> Option<OwnedFd> {
     }
 
     for cmsg in ancillary.drain() {
-        if let RecvAncillaryMessage::ScmRights(fds) = cmsg {
-            for owned in fds {
+        if let RecvAncillaryMessage::ScmRights(mut fds) = cmsg {
+            if let Some(owned) = fds.next() {
                 tracing::info!(model = %model_id, "obtained sealed memfd descriptor from modeld CAS");
                 return Some(owned);
             }

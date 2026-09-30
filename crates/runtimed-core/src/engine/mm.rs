@@ -86,7 +86,7 @@ pub(super) fn generate_mm_tokens(
     let mut rng = Rng(seed);
     let pad = bpe.pad_id();
     let ids = runtimed_model::decode::generate::generate_mm(
-        &mut *session,
+        &mut session,
         &prompt_ids,
         &soft,
         pad,

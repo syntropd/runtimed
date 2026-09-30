@@ -10,6 +10,11 @@ use crate::model::EngineEntry;
 /// Resolves candidate token string to a single token ID.
 pub fn resolve_candidate_token(entry: &EngineEntry, token_str: &str) -> Result<u32> {
     let trimmed = token_str.trim();
+    if trimmed.is_empty() {
+        return Err(RuntimedError::GenerationFailed(
+            "candidate token alias cannot be empty".into(),
+        ));
+    }
     if let Ok(ids) = entry.tokenizer.encode(trimmed, false) {
         if ids.len() == 1 {
             return Ok(ids[0]);

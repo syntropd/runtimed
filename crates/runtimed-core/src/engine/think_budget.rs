@@ -54,7 +54,7 @@ impl ReasoningEffort {
         available_memory_bytes: u64,
         psi_memory_some: f32,
     ) -> Self {
-        if !is_thinking_model || psi_memory_some >= 10.0 {
+        if !is_thinking_model || psi_memory_some.is_nan() || psi_memory_some >= 10.0 {
             return Self::None;
         }
         if !compute_backend.eq_ignore_ascii_case("cuda") {
@@ -210,8 +210,8 @@ mod tests {
     fn test_budget_three_step_and_enforce() {
         let mut tb = ThinkBudget::with_initial_phase(Some(3), 2, ThinkingPhase::Thinking);
         let mut logits = vec![1.0, 2.0, 3.0, 4.0];
-        assert_eq!(tb.step(0), BudgetAction::Continue);
-        assert_eq!(tb.step(1), BudgetAction::Continue);
+        assert!(!tb.enforce_logits(&mut logits)); assert_eq!(tb.step(0), BudgetAction::Continue);
+        assert!(!tb.enforce_logits(&mut logits)); assert_eq!(tb.step(1), BudgetAction::Continue);
         assert_eq!(tb.step(3), BudgetAction::ForceEndThink(2));
         assert_eq!(tb.phase, ThinkingPhase::Thinking);
         assert!(tb.enforce_logits(&mut logits));

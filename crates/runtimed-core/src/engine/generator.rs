@@ -137,6 +137,7 @@ fn generate_with_budget(
     use super::think_budget::{ThinkBudget, ThinkingPhase};
     let end_id = entry.tokenizer.encode("</think>", false)
         .ok()
+        .filter(|v| v.len() == 1)
         .and_then(|v| v.first().copied())
         .unwrap_or_else(|| entry.eos.first().copied().unwrap_or(0));
     let initial_phase = if req.prompt.trim_end().ends_with("<think>") {
@@ -146,7 +147,7 @@ fn generate_with_budget(
     };
     let mut tb = ThinkBudget::with_initial_phase(reasoning_budget, end_id, initial_phase);
     if let Ok(toks) = entry.tokenizer.encode("<think>", false) {
-        if let Some(&tid) = toks.first() { tb.set_think_token_id(tid); }
+        if toks.len() == 1 { tb.set_think_token_id(toks[0]); }
     }
     generate(session, prompt_ids, &entry.eos, budget, |logits| {
         let mut row = logits.to_vec1::<f32>()?;
@@ -189,12 +190,12 @@ pub fn generate_tokens(
     let mut session = entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
+    let is_thinking = is_thinking_model(&entry.tokenizer);
     let (is_budgeted, rb) = if let Some(rb) = request.reasoning_budget {
-        (true, Some(rb))
+        (is_thinking, Some(rb))
     } else if let Some(effort) = request.reasoning_effort {
-        (true, effort.to_budget(entry.meta.context_window))
+        (is_thinking, effort.to_budget(entry.meta.context_window))
     } else {
-        let is_thinking = is_thinking_model(&entry.tokenizer);
         let avail_mem = read_available_memory_bytes();
         let psi_some = crate::psi::read_memory_psi(std::path::Path::new(crate::psi::DEFAULT_PSI_MEMORY_PATH))
             .map(|(s, _)| s)
@@ -206,8 +207,7 @@ pub fn generate_tokens(
             avail_mem,
             psi_some,
         );
-        let effective_budget = effort.to_budget(entry.meta.context_window);
-        (is_thinking, effective_budget)
+        (is_thinking, effort.to_budget(entry.meta.context_window))
     };
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
         generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?

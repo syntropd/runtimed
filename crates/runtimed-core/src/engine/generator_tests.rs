@@ -73,9 +73,12 @@ fn test_resolve_adaptive_default() {
     let ok_model = (10 * GIB) as usize;
     assert_eq!(ReasoningEffort::resolve_adaptive_default(false, "cuda", ok_model, ok_free, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, 10.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, f32::NAN), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cpu", ok_model, ok_free, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, 1 * GIB, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", (30 * GIB) as usize, 2 * GIB, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, 1_610_612_735, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", 5usize * 1_610_612_736usize, 1_610_612_736, 0.0), ReasoningEffort::Low);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, 0.0), ReasoningEffort::Low);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "CUDA", ok_model, ok_free, 5.0), ReasoningEffort::Low);
 }
@@ -85,5 +88,13 @@ fn test_reasoning_effort_from_str_aliases() {
     assert_eq!("off".parse(), Ok(ReasoningEffort::None));
     assert_eq!("med".parse(), Ok(ReasoningEffort::Medium));
     assert_eq!("unlimited".parse(), Ok(ReasoningEffort::Max));
+}
+
+#[test]
+fn test_prompt_think_suffix_detection() {
+    assert!("Let's solve this: <think>  \n".trim_end().ends_with("<think>"));
+    assert!("<think>".trim_end().ends_with("<think>"));
+    assert!(!"<think>test</think>".trim_end().ends_with("<think>"));
+    assert!(!"Hello world".trim_end().ends_with("<think>"));
 }
 

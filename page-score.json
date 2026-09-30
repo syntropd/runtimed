@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "ca3545e",
+ "rev": "32f7ddb",
  "dirty": true,
  "pages": [
   {
@@ -145,7 +145,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
-   "lines": 89,
+   "lines": 100,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

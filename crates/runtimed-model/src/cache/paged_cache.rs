@@ -16,6 +16,7 @@ pub struct CacheBlock {
     pub block_id: usize,
     pub tier: StorageTier,
     pub device: Device,
+    pub origin_device: Device,
     pub k: Tensor,
     pub v: Tensor,
     pub num_tokens: usize,
@@ -49,6 +50,7 @@ impl PagedKvCache {
             block_id,
             tier,
             device: dev.clone(),
+            origin_device: dev.clone(),
             k: init_k,
             v: init_v,
             num_tokens,
@@ -240,10 +242,7 @@ mod tests {
         let k = Tensor::zeros((1, 1, 2, 4), DType::F32, &Device::Cpu).unwrap();
         let v = Tensor::zeros((1, 1, 2, 4), DType::F32, &Device::Cpu).unwrap();
         cache.append_kv(0, &k, &v, &Device::Cpu).unwrap();
-        let (rk, _) = cache
-            .assemble_layer_kv_rope(0, &Device::Cpu, &[0, 1], 10000.0, 4)
-            .unwrap()
-            .unwrap();
+        let (rk, _) = cache.assemble_layer_kv_rope(0, &Device::Cpu, &[0, 1], 10000.0, 4).unwrap().unwrap();
         assert_eq!(rk.dims(), &[1, 1, 2, 4]);
     }
 }

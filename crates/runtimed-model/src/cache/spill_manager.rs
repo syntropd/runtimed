@@ -63,6 +63,47 @@ impl SpillManager {
             Ok(0)
         }
     }
+
+    /// Selectively spill blocks only from a saturated accelerator device to CPU host RAM.
+    pub fn spill_device_blocks(
+        &self,
+        cache: &mut PagedKvCache,
+        device: &Device,
+        count: usize,
+    ) -> Result<usize> {
+        let mut spilled = 0;
+        for block in &mut cache.blocks {
+            if spilled >= count {
+                break;
+            }
+            if block.tier == StorageTier::L1Vram && block.origin_device.same_device(device) {
+                block.k = block.k.to_device(&Device::Cpu)?;
+                block.v = block.v.to_device(&Device::Cpu)?;
+                block.device = Device::Cpu;
+                block.tier = StorageTier::L2PinnedHost;
+                spilled += 1;
+            }
+        }
+        Ok(spilled)
+    }
+
+    /// Restore spilled L2 blocks back to their original accelerator device.
+    pub fn restore_origin_blocks(&self, cache: &mut PagedKvCache, count: usize) -> Result<usize> {
+        let mut restored = 0;
+        for block in &mut cache.blocks {
+            if restored >= count {
+                break;
+            }
+            if block.tier == StorageTier::L2PinnedHost {
+                block.k = block.k.to_device(&block.origin_device)?;
+                block.v = block.v.to_device(&block.origin_device)?;
+                block.device = block.origin_device.clone();
+                block.tier = StorageTier::L1Vram;
+                restored += 1;
+            }
+        }
+        Ok(restored)
+    }
 }
 
 #[cfg(test)]
@@ -95,5 +136,27 @@ mod tests {
         let auto_spilled = strict_mgr.enforce_capacity(&mut cache).unwrap();
         assert_eq!(auto_spilled, 1);
         assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 0);
+    }
+
+    #[test]
+    fn test_selective_device_shedding_and_restore() {
+        let mut cache = PagedKvCache::new(1);
+        let k1 = Tensor::zeros((1, 2, 1, 64), DType::F32, &Device::Cpu).unwrap();
+        let v1 = Tensor::zeros((1, 2, 1, 64), DType::F32, &Device::Cpu).unwrap();
+        let k2 = Tensor::zeros((1, 2, 1, 64), DType::F32, &Device::Cpu).unwrap();
+        let v2 = Tensor::zeros((1, 2, 1, 64), DType::F32, &Device::Cpu).unwrap();
+
+        cache.allocate_block(&Device::Cpu, StorageTier::L1Vram, k1, v1, 1);
+        cache.allocate_block(&Device::Cpu, StorageTier::L1Vram, k2, v2, 1);
+
+        let manager = SpillManager::new(10);
+        let spilled = manager.spill_device_blocks(&mut cache, &Device::Cpu, 1).unwrap();
+        assert_eq!(spilled, 1);
+        assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 1);
+        assert_eq!(cache.count_tier_blocks(StorageTier::L2PinnedHost), 1);
+
+        let restored = manager.restore_origin_blocks(&mut cache, 1).unwrap();
+        assert_eq!(restored, 1);
+        assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 2);
     }
 }

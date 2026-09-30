@@ -110,21 +110,6 @@ pub fn is_thinking_model(tokenizer: &EngineTokenizer) -> bool {
         .unwrap_or(false)
 }
 
-fn read_available_memory_bytes() -> u64 {
-    std::fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|info| {
-            for line in info.lines() {
-                if let Some(rest) = line.strip_prefix("MemAvailable:") {
-                    let kb = rest.trim_start().split_whitespace().next()?.parse::<u64>().ok()?;
-                    return Some(kb * 1024);
-                }
-            }
-            None
-        })
-        .unwrap_or(0)
-}
-
 fn generate_with_budget(
     session: &mut runtimed_model::Session,
     entry: &EngineEntry,
@@ -196,17 +181,17 @@ pub fn generate_tokens(
     } else if let Some(effort) = request.reasoning_effort {
         (is_thinking, effort.to_budget(entry.meta.context_window))
     } else {
-        let avail_mem = read_available_memory_bytes();
+        let avail_mem = crate::governor::read_system_available_memory();
         let psi_some = crate::psi::read_memory_psi(std::path::Path::new(crate::psi::DEFAULT_PSI_MEMORY_PATH))
             .map(|(s, _)| s)
             .unwrap_or(0.0);
-        let effort = ReasoningEffort::resolve_adaptive_default(
-            is_thinking,
+        let gov = crate::governor::MultiGpuHeadroomGovernor::for_single_device(
             &entry.meta.compute_backend,
             entry.meta.memory_bytes,
             avail_mem,
             psi_some,
         );
+        let effort = gov.resolve_effort(is_thinking);
         (is_thinking, effort.to_budget(entry.meta.context_window))
     };
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {

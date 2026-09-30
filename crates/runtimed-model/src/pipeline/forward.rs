@@ -14,6 +14,7 @@ pub fn forward_pipeline(
     cfg: &ArchConfig,
     input_ids: &[u32],
     pos: usize,
+    mut stage_kv_caches: Option<&mut [crate::cache::PagedKvCache]>,
 ) -> Result<Tensor> {
     if stages.is_empty() {
         return Err(ModelError::Config("Pipeline has zero stages".into()));
@@ -37,7 +38,20 @@ pub fn forward_pipeline(
 
         // Run layers assigned to this stage
         for layer_idx in stage.start_layer..stage.end_layer {
-            h = execute_stage_layer(cfg, &stage.weights, layer_idx, &h, pos)?;
+            let stage_cache = if let Some(ref mut caches) = stage_kv_caches {
+                caches.get_mut(idx)
+            } else {
+                None
+            };
+            h = execute_stage_layer(
+                cfg,
+                &stage.weights,
+                layer_idx,
+                &h,
+                pos,
+                stage_cache,
+                layer_idx.saturating_sub(stage.start_layer),
+            )?;
         }
 
         // If last stage, apply final norm and LM head
@@ -60,6 +74,8 @@ fn execute_stage_layer(
     i: usize,
     h: &Tensor,
     q0: usize,
+    stage_cache: Option<&mut crate::cache::PagedKvCache>,
+    local_layer: usize,
 ) -> Result<Tensor> {
     let lc = &cfg.layers[i];
     let pre = format!("blk.{i}");
@@ -78,10 +94,18 @@ fn execute_stage_layer(
         Ok(y.reshape((1, t, heads, lc.head_dim))?.transpose(1, 2)?)
     };
     let q = split(w.linear_bias(&n, &format!("{pre}.attn_q.weight"), bq.as_deref())?)?;
-    let k = split(w.linear_bias(&n, &format!("{pre}.attn_k.weight"), bk.as_deref())?)?;
-    let v = split(w.linear_bias(&n, &format!("{pre}.attn_v.weight"), bv.as_deref())?)?;
+    let mut k = split(w.linear_bias(&n, &format!("{pre}.attn_k.weight"), bk.as_deref())?)?;
+    let mut v = split(w.linear_bias(&n, &format!("{pre}.attn_v.weight"), bv.as_deref())?)?;
     let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
-    let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
+    k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
+
+    if let Some(cache) = stage_cache {
+        cache.append_kv(local_layer, &k, &v, dev)?;
+        if let Some((ak, av)) = cache.assemble_layer_kv(local_layer, dev)? {
+            k = ak;
+            v = av;
+        }
+    }
 
     let total = k.dim(2)?;
     let mask = ops::causal_mask(t, total, q0, None, dev)?;

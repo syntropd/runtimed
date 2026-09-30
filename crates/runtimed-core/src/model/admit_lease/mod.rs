@@ -8,10 +8,14 @@
 //! with [`crate::error::RuntimedError::HardwareAllocation`].
 
 mod client;
+pub mod composite;
 mod permit;
 
 #[cfg(test)]
 mod tests;
 
 pub use client::{LeaseClient, DEFAULT_INFERENCED_SOCKET, INFERENCED_SOCKET_ENV};
+pub use composite::{
+    CompositeLeaseClient, CompositeLeasePermit, CompositeSliceAllocation, CompositeSliceRequest,
+};
 pub use permit::LeasePermit;

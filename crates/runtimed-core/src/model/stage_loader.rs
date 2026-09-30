@@ -43,6 +43,44 @@ impl StageLoader {
         partitions
     }
 
+    /// Partition layers asymmetrically across devices proportional to their available VRAM.
+    /// L_p = round(L * V_p / sum(V))
+    pub fn asymmetric_partition_layers(
+        total_layers: usize,
+        device_vrams: &[(Device, u64)],
+    ) -> Vec<StagePartition> {
+        if device_vrams.is_empty() || total_layers == 0 {
+            return vec![];
+        }
+        let total_vram: u64 = device_vrams.iter().map(|(_, v)| *v).sum();
+        if total_vram == 0 {
+            let devs: Vec<Device> = device_vrams.iter().map(|(d, _)| d.clone()).collect();
+            return Self::partition_layers(total_layers, &devs);
+        }
+
+        let mut partitions = Vec::with_capacity(device_vrams.len());
+        let mut current_layer = 0;
+        let mut cum_vram = 0u64;
+
+        for (i, (dev, vram)) in device_vrams.iter().enumerate() {
+            cum_vram += *vram;
+            let target_end = if i == device_vrams.len() - 1 {
+                total_layers
+            } else {
+                ((total_layers as f64 * cum_vram as f64) / total_vram as f64).round() as usize
+            };
+            let end_layer = target_end.min(total_layers).max(current_layer);
+            partitions.push(StagePartition {
+                device: dev.clone(),
+                start_layer: current_layer,
+                end_layer,
+            });
+            current_layer = end_layer;
+        }
+
+        partitions
+    }
+
     /// Load pipeline stages directly from a sealed memfd file handle.
     pub fn load_stages_from_file(
         file: &File,
@@ -130,5 +168,17 @@ mod tests {
         let parts_odd = StageLoader::partition_layers(7, &devs);
         assert_eq!(parts_odd[0].end_layer, 4);
         assert_eq!(parts_odd[1].end_layer, 7);
+    }
+
+    #[test]
+    fn test_asymmetric_partition_layers() {
+        // 32 layers across 24 GB GPU and 8 GB GPU -> 24 layers and 8 layers
+        let dev_vrams = vec![(Device::Cpu, 24 * 1024 * 1024 * 1024), (Device::Cpu, 8 * 1024 * 1024 * 1024)];
+        let parts = StageLoader::asymmetric_partition_layers(32, &dev_vrams);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].start_layer, 0);
+        assert_eq!(parts[0].end_layer, 24);
+        assert_eq!(parts[1].start_layer, 24);
+        assert_eq!(parts[1].end_layer, 32);
     }
 }

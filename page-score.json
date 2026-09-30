@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "32f7ddb",
+ "rev": "f218330",
  "dirty": true,
  "pages": [
   {
@@ -138,7 +138,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 248,
+   "lines": 233,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -190,11 +190,39 @@
    "lines": 68,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 13
+   "reach": 14
+  },
+  {
+   "path": "./crates/runtimed-core/src/governor/device_headroom.rs",
+   "lines": 78,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 3
+  },
+  {
+   "path": "./crates/runtimed-core/src/governor/gang_governor.rs",
+   "lines": 136,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-core/src/governor/governor_tests.rs",
+   "lines": 132,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/governor/mod.rs",
+   "lines": 10,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/lib.rs",
-   "lines": 24,
+   "lines": 25,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -204,11 +232,18 @@
    "lines": 127,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 3
+   "reach": 4
+  },
+  {
+   "path": "./crates/runtimed-core/src/model/admit_lease/composite.rs",
+   "lines": 181,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/mod.rs",
-   "lines": 17,
+   "lines": 21,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -306,7 +341,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/stage_loader.rs",
-   "lines": 134,
+   "lines": 184,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -607,7 +642,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/paged_cache.rs",
-   "lines": 249,
+   "lines": 248,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -628,7 +663,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/spill_manager.rs",
-   "lines": 99,
+   "lines": 162,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -761,7 +796,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
-   "lines": 104,
+   "lines": 128,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

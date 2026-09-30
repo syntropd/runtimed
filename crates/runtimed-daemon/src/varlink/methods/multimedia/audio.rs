@@ -90,34 +90,40 @@ pub async fn handle_stream_audio_out(
                     )
                 }
             };
-            if let Err(e) = pw_sink.finish().await {
+            let status = match pw_sink.finish().await {
+                Ok(s) => s,
+                Err(e) => {
+                    return VarlinkReply::err(
+                        "io.syntrop.Runtime1.GenerationFailed",
+                        Some(json!({ "reason": format!("pw-cat playback wait failed: {e}") })),
+                    );
+                }
+            };
+            if !status.success() {
                 return VarlinkReply::err(
                     "io.syntrop.Runtime1.GenerationFailed",
-                    Some(json!({ "reason": format!("pw-cat playback wait failed: {e}") })),
+                    Some(json!({ "reason": format!("pw-cat playback failed with status: {status}") })),
                 );
             }
             bytes
         }
         _ => {
             // Auto mode: attempt pw-cat, fall back to buffer sink cleanly.
-            if let Ok(mut pw_sink) = PwCatSink::spawn() {
+            let pw_result = if let Ok(mut pw_sink) = PwCatSink::spawn() {
                 match engine.synthesize(text, voice, &mut pw_sink).await {
-                    Ok(b) => {
-                        let _ = pw_sink.finish().await;
-                        b
-                    }
-                    Err(_) => match engine.synthesize(text, voice, &mut buffer_sink).await {
-                        Ok(b) => b,
-                        Err(e) => {
-                            return VarlinkReply::err(
-                                "io.syntrop.Runtime1.GenerationFailed",
-                                Some(json!({ "reason": format!("tts failed: {e}") })),
-                            )
-                        }
+                    Ok(b) => match pw_sink.finish().await {
+                        Ok(status) if status.success() => Some(b),
+                        _ => None,
                     },
+                    Err(_) => None,
                 }
             } else {
-                match engine.synthesize(text, voice, &mut buffer_sink).await {
+                None
+            };
+
+            match pw_result {
+                Some(b) => b,
+                None => match engine.synthesize(text, voice, &mut buffer_sink).await {
                     Ok(b) => b,
                     Err(e) => {
                         return VarlinkReply::err(
@@ -125,7 +131,7 @@ pub async fn handle_stream_audio_out(
                             Some(json!({ "reason": format!("tts failed: {e}") })),
                         )
                     }
-                }
+                },
             }
         }
     };
@@ -161,5 +167,20 @@ mod tests {
         let params = json!({ "voice": "af_bella" });
         let reply = handle_stream_audio_out(Some(&params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+    }
+
+    #[tokio::test]
+    async fn test_stream_audio_out_auto_mode() {
+        let params = json!({
+            "text": "System operational and ready.",
+            "voice": "af_bella",
+            "sink_type": "auto"
+        });
+        let reply = handle_stream_audio_out(Some(&params), None).await;
+        assert!(reply.error.is_none());
+        let res = reply.parameters.unwrap();
+        assert_eq!(res["sample_rate"], 24000);
+        assert_eq!(res["channels"], 1);
+        assert!(res["bytes_streamed"].as_u64().unwrap() > 0);
     }
 }

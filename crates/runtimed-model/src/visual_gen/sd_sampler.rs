@@ -124,8 +124,10 @@ impl VisualGenSampler {
             ) {
                 if let Ok(denoised) = unet.forward(&latents, 1.0) {
                     if let Ok(vec) = denoised.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
-                        if vec.len() >= 4 {
-                            prompt_seed ^= (vec[0].abs() as u64) << 16;
+                        if let Some(&first) = vec.first() {
+                            if first.is_finite() {
+                                prompt_seed ^= (first.abs() as u64) << 16;
+                            }
                         }
                     }
                 }

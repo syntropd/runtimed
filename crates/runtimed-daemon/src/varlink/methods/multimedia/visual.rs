@@ -8,13 +8,14 @@ use runtimed_core::model::ModelManager;
 use runtimed_model::visual_gen::{VisualComputeLease, VisualGenConfig, VisualGenSampler};
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> std::env::temp_dir().
+/// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> /run (if /run/syntrop exists) -> temp_dir().
 fn resolve_runtime_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         let p = PathBuf::from(xdg.trim());
-        if !p.as_os_str().is_empty() {
+        if !p.as_os_str().is_empty() && p.exists() {
             return p;
         }
     }
@@ -22,6 +23,10 @@ fn resolve_runtime_dir() -> PathBuf {
     let run_user = PathBuf::from(format!("/run/user/{uid}"));
     if run_user.exists() {
         return run_user;
+    }
+    let run_syntrop = PathBuf::from("/run/syntrop");
+    if run_syntrop.exists() {
+        return PathBuf::from("/run");
     }
     std::env::temp_dir()
 }
@@ -121,15 +126,19 @@ pub async fn handle_generate_visual(
             Some(json!({ "reason": format!("failed to create output dir: {e}") })),
         );
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&out_dir, std::fs::Permissions::from_mode(0o775));
+    }
 
-    let id = format!(
-        "{:016x}_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos(),
-        seed
-    );
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let id = format!("{nanos:016x}_{count}_{seed}");
     let final_path = out_dir.join(format!("{id}.png"));
     let tmp_path = out_dir.join(format!(".{id}.tmp"));
 
@@ -138,6 +147,11 @@ pub async fn handle_generate_visual(
             "io.syntrop.Runtime1.GenerationFailed",
             Some(json!({ "reason": format!("failed to write temporary visual file: {e}") })),
         );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644));
     }
     if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
         let _ = std::fs::remove_file(&tmp_path);

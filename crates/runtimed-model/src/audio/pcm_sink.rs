@@ -173,4 +173,14 @@ mod tests {
             assert!(status.success());
         }
     }
+
+    #[tokio::test]
+    async fn test_pw_cat_sink_finish_failure() {
+        if std::path::Path::new("/usr/bin/false").exists() {
+            let mut sink = PwCatSink::spawn_with_path("/usr/bin/false").unwrap();
+            let _ = sink.write_pcm(&[10, 20, 30]).await;
+            let status = sink.finish().await.unwrap();
+            assert!(!status.success());
+        }
+    }
 }

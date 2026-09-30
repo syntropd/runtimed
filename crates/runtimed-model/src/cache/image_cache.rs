@@ -104,8 +104,12 @@ impl ImageCache {
         self.entries.len()
     }
 
+    pub fn soft_len(&self) -> usize {
+        self.soft_entries.len()
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.soft_entries.is_empty()
     }
 
     pub fn clear(&mut self) {
@@ -197,11 +201,15 @@ mod tests {
         let tokens = Tensor::zeros((1, 8, 16), DType::F32, &dev).unwrap();
 
         cache.insert_soft_tokens(key.clone(), &tokens, 8).unwrap();
+        assert_eq!(cache.soft_len(), 1);
+        assert!(!cache.is_empty());
         let (cached, num) = cache.get_soft_tokens(&key).unwrap();
         assert_eq!(num, 8);
         assert_eq!(cached.dims(), &[1, 8, 16]);
 
         cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.soft_len(), 0);
         assert!(cache.get_soft_tokens(&key).is_none());
     }
 

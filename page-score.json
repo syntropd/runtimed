@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "14784f9",
+ "rev": "0b05233",
  "dirty": true,
  "pages": [
   {
@@ -130,6 +130,34 @@
    "reach": 1
   },
   {
+   "path": "./crates/runtimed-core/src/decide/calibrate.rs",
+   "lines": 114,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-core/src/decide/evaluate.rs",
+   "lines": 141,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-core/src/decide/mod.rs",
+   "lines": 18,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/decide/types.rs",
+   "lines": 75,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
    "path": "./crates/runtimed-core/src/engine/embedder.rs",
    "lines": 56,
    "bin_bytes": null,
@@ -190,7 +218,7 @@
    "lines": 68,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 14
+   "reach": 15
   },
   {
    "path": "./crates/runtimed-core/src/governor/device_headroom.rs",
@@ -222,7 +250,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/lib.rs",
-   "lines": 25,
+   "lines": 29,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -403,6 +431,13 @@
    "reach": 2
   },
   {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/decide.rs",
+   "lines": 127,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-daemon/src/varlink/methods/load_report.rs",
    "lines": 22,
    "bin_bytes": null,
@@ -425,21 +460,21 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/mod.rs",
-   "lines": 8,
+   "lines": 9,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 237,
+   "lines": 238,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 6
+   "reach": 7
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 80,
+   "lines": 103,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -477,14 +512,14 @@
    "lines": 57,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 8
+   "reach": 9
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/server.rs",
    "lines": 234,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 8
+   "reach": 9
   },
   {
    "path": "./crates/runtimed-gguf/examples/decode_all.rs",
@@ -614,7 +649,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/gemma4.rs",
-   "lines": 210,
+   "lines": 233,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -628,7 +663,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 114,
+   "lines": 136,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -726,7 +761,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
-   "lines": 203,
+   "lines": 231,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3

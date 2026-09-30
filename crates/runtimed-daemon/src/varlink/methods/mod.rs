@@ -1,5 +1,6 @@
 //! io.syntrop.Runtime1 method handlers.
 
+pub mod decide;
 pub mod load_report;
 pub mod lora_attach;
 pub mod model_lifecycle;

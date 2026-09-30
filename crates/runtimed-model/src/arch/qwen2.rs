@@ -112,3 +112,25 @@ pub fn forward(
     h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     Ok(w.linear(&h, "output.weight")?)
 }
+
+/// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
+pub fn forward_last_hidden(
+    cfg: &ArchConfig,
+    w: &Weights,
+    cache: &mut Cache,
+    prompt_ids: &[u32],
+) -> Result<Tensor> {
+    if prompt_ids.is_empty() {
+        return Err(crate::error::ModelError::Config(
+            "cannot score an empty prompt".into(),
+        ));
+    }
+    let mut h = w.embed("token_embd.weight", prompt_ids)?;
+    for i in 0..cfg.n_layer {
+        h = layer(cfg, w, cache, i, &h, 0)?;
+    }
+    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let seq = h.dim(1)?;
+    let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
+    Ok(last)
+}

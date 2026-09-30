@@ -29,7 +29,30 @@ type GenerationResult (
   duration_ms: int
 )
 
+type Candidate (
+  name: string,
+  token: string
+)
+
+type ScoredCandidate (
+  name: string,
+  token: string,
+  token_id: int,
+  logit: float,
+  probability: float
+)
+
+type DecisionResult (
+  winner: string,
+  confidence: float,
+  raw_probability: float,
+  margin: float,
+  entropy: float,
+  candidates: []ScoredCandidate
+)
+
 method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, reasoning_budget: ?int, reasoning_effort: ?string) -> (result: GenerationResult)
+method Decide(model: string, prompt: string, candidates: []Candidate, temperature: ?float) -> (result: DecisionResult)
 method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
 method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
 method GetLoad() -> (available_slots: int, max_slots: int, used_bytes: int, models: []LoadedModel)

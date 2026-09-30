@@ -42,11 +42,12 @@ impl Runtime1Handler {
             "io.syntrop.Runtime1.GetModelStatus" => Some(self.handle_get_model_status(params)),
             "io.syntrop.Runtime1.UnloadModel" => Some(self.handle_unload_model(params)),
             "io.syntrop.Runtime1.ListLoadedModels" => Some(self.handle_list_loaded_models()),
+            "io.syntrop.Runtime1.Decide" => Some(self.handle_decide(params).await),
             _ => None,
         }
     }
 
-    fn acquire_permit(&self) -> Result<OwnedSemaphorePermit, VarlinkReply> {
+    pub(super) fn acquire_permit(&self) -> Result<OwnedSemaphorePermit, VarlinkReply> {
         match Arc::clone(&self.semaphore).try_acquire_owned() {
             Ok(p) => Ok(p),
             Err(TryAcquireError::NoPermits) => Err(VarlinkReply::err(

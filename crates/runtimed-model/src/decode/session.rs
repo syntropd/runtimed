@@ -145,6 +145,34 @@ impl Session {
         self.forward(ids, 0)
     }
 
+    /// Score specific candidate tokens against prompt context, returning [1, K] logits.
+    pub fn score_candidates(&mut self, prompt_ids: &[u32], candidate_ids: &[u32]) -> Result<Tensor> {
+        if prompt_ids.is_empty() {
+            return Err(ModelError::Config("cannot score an empty prompt".into()));
+        }
+        if candidate_ids.is_empty() {
+            return Err(ModelError::Config("cannot score empty candidates".into()));
+        }
+        Weights::ensure_current(self.w.device())?;
+        self.reset();
+        let h_n = match &mut self.kind {
+            Kind::Qwen2(c) => qwen2::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
+            Kind::Gemma4(c) => gemma4::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
+        };
+        let out_weight = if self.w.contains_key("output.weight") {
+            self.w.get("output.weight")?
+        } else {
+            self.w.get("token_embd.weight")?
+        };
+        let idx = Tensor::from_vec(candidate_ids.to_vec(), candidate_ids.len(), self.w.device())?;
+        let w_c = out_weight.index_select(&idx, 0)?;
+        let mut logits = h_n.matmul(&w_c.t()?)?;
+        if let Some(cap) = self.cfg.final_softcap {
+            logits = logits.affine((1.0 / cap) as f64, 0.0)?.tanh()?.affine(cap as f64, 0.0)?;
+        }
+        Ok(logits)
+    }
+
     /// Multimodal prefill (Gemma4 only): `ids` hold `IMG_TOKEN`
     /// placeholders, `soft` is `[1, S, hidden]` with S matching the
     /// placeholder count. Placeholders read as `pad_id` on the text path;

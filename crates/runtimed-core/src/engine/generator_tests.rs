@@ -53,3 +53,37 @@ fn bpe_text_prompts_get_chat_template() {
     assert!(ids.len() > raw.len() + 8);
     assert_ne!(ids, raw);
 }
+
+#[test]
+fn test_reasoning_effort_to_budget() {
+    assert_eq!(ReasoningEffort::None.to_budget(8192), Some(0));
+    assert_eq!(ReasoningEffort::Low.to_budget(8192), Some(1024));
+    assert_eq!(ReasoningEffort::Low.to_budget(2048), Some(512));
+    assert_eq!(ReasoningEffort::Medium.to_budget(8192), Some(2730));
+    assert_eq!(ReasoningEffort::Medium.to_budget(32768), Some(4096));
+    assert_eq!(ReasoningEffort::High.to_budget(8192), Some(4096));
+    assert_eq!(ReasoningEffort::High.to_budget(65536), Some(16384));
+    assert_eq!(ReasoningEffort::Max.to_budget(8192), None);
+}
+
+#[test]
+fn test_resolve_adaptive_default() {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let ok_free = 4 * GIB;
+    let ok_model = (10 * GIB) as usize;
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(false, "cuda", ok_model, ok_free, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, 10.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cpu", ok_model, ok_free, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, 1 * GIB, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", (30 * GIB) as usize, 2 * GIB, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, 0.0), ReasoningEffort::Low);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "CUDA", ok_model, ok_free, 5.0), ReasoningEffort::Low);
+}
+
+#[test]
+fn test_reasoning_effort_from_str_aliases() {
+    assert_eq!("off".parse(), Ok(ReasoningEffort::None));
+    assert_eq!("med".parse(), Ok(ReasoningEffort::Medium));
+    assert_eq!("unlimited".parse(), Ok(ReasoningEffort::Max));
+}
+

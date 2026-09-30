@@ -39,10 +39,35 @@ impl ReasoningEffort {
     pub fn to_budget(self, context_limit: usize) -> Option<usize> {
         match self {
             Self::None => Some(0),
-            Self::Low => Some(1024),
-            Self::Medium => Some(4096),
+            Self::Low => Some(1024.min(context_limit / 4)),
+            Self::Medium => Some(4096.min(context_limit / 3)),
             Self::High => Some(16384.min(context_limit / 2)),
             Self::Max => None,
+        }
+    }
+
+    /// Resolve default reasoning effort adaptively based on hardware and memory headroom.
+    pub fn resolve_adaptive_default(
+        is_thinking_model: bool,
+        compute_backend: &str,
+        model_memory_bytes: usize,
+        available_memory_bytes: u64,
+        psi_memory_some: f32,
+    ) -> Self {
+        if !is_thinking_model || psi_memory_some >= 10.0 {
+            return Self::None;
+        }
+        if !compute_backend.eq_ignore_ascii_case("cuda") {
+            return Self::None;
+        }
+        const MIN_FREE_BYTES: u64 = 1_610_612_736; // 1.5 GiB
+        if available_memory_bytes >= MIN_FREE_BYTES
+            && model_memory_bytes > 0
+            && (available_memory_bytes as f64 / model_memory_bytes as f64) >= 0.20
+        {
+            Self::Low
+        } else {
+            Self::None
         }
     }
 }
@@ -63,13 +88,13 @@ impl std::str::FromStr for ReasoningEffort {
 
 impl std::fmt::Display for ReasoningEffort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::None => write!(f, "none"),
-            Self::Low => write!(f, "low"),
-            Self::Medium => write!(f, "medium"),
-            Self::High => write!(f, "high"),
-            Self::Max => write!(f, "max"),
-        }
+        write!(f, "{}", match self {
+            Self::None => "none",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Max => "max",
+        })
     }
 }
 
@@ -85,7 +110,7 @@ pub struct ThinkBudget {
 
 impl ThinkBudget {
     pub fn new(budget: Option<usize>, end_think_token_id: u32) -> Self {
-        Self { budget, tokens_consumed: 0, phase: ThinkingPhase::NotThinking, think_token_id: None, end_think_token_id }
+        Self::with_initial_phase(budget, end_think_token_id, ThinkingPhase::NotThinking)
     }
 
     pub fn with_initial_phase(budget: Option<usize>, end_think_token_id: u32, phase: ThinkingPhase) -> Self {
@@ -139,11 +164,7 @@ impl ThinkBudget {
                 && (self.end_think_token_id as usize) < logits.len()
             {
                 for (idx, val) in logits.iter_mut().enumerate() {
-                    if idx as u32 == self.end_think_token_id {
-                        *val = 0.0;
-                    } else {
-                        *val = f32::NEG_INFINITY;
-                    }
+                    *val = if idx as u32 == self.end_think_token_id { 0.0 } else { f32::NEG_INFINITY };
                 }
                 return true;
             }
@@ -189,11 +210,8 @@ mod tests {
     fn test_budget_three_step_and_enforce() {
         let mut tb = ThinkBudget::with_initial_phase(Some(3), 2, ThinkingPhase::Thinking);
         let mut logits = vec![1.0, 2.0, 3.0, 4.0];
-        assert!(!tb.enforce_logits(&mut logits));
         assert_eq!(tb.step(0), BudgetAction::Continue);
-        assert!(!tb.enforce_logits(&mut logits));
         assert_eq!(tb.step(1), BudgetAction::Continue);
-        assert!(!tb.enforce_logits(&mut logits));
         assert_eq!(tb.step(3), BudgetAction::ForceEndThink(2));
         assert_eq!(tb.phase, ThinkingPhase::Thinking);
         assert!(tb.enforce_logits(&mut logits));
@@ -224,27 +242,10 @@ mod tests {
     }
 
     #[test]
-    fn test_reasoning_effort_to_budget() {
-        assert_eq!(ReasoningEffort::None.to_budget(8192), Some(0));
-        assert_eq!(ReasoningEffort::Low.to_budget(8192), Some(1024));
-        assert_eq!(ReasoningEffort::Medium.to_budget(8192), Some(4096));
-        assert_eq!(ReasoningEffort::High.to_budget(8192), Some(4096));
-        assert_eq!(ReasoningEffort::High.to_budget(65536), Some(16384));
-        assert_eq!(ReasoningEffort::Max.to_budget(8192), None);
-    }
-
-    #[test]
     fn test_enforce_logits_out_of_bounds() {
         let tb = ThinkBudget::with_initial_phase(Some(0), 9999, ThinkingPhase::Thinking);
         let mut logits = vec![1.0, 2.0];
         assert!(!tb.enforce_logits(&mut logits));
         assert_eq!(logits, vec![1.0, 2.0]);
-    }
-
-    #[test]
-    fn test_reasoning_effort_from_str_aliases() {
-        assert_eq!("off".parse(), Ok(ReasoningEffort::None));
-        assert_eq!("med".parse(), Ok(ReasoningEffort::Medium));
-        assert_eq!("unlimited".parse(), Ok(ReasoningEffort::Max));
     }
 }

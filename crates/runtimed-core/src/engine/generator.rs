@@ -4,6 +4,7 @@ use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
 use crate::model::tokenizer::EngineTokenizer;
 use super::mm;
+use super::ReasoningEffort;
 use runtimed_model::decode::{chat, sample};
 use runtimed_model::generate;
 use serde::{Deserialize, Serialize};
@@ -31,7 +32,7 @@ pub struct GenerationRequest {
     #[serde(default)]
     pub reasoning_budget: Option<usize>,
     #[serde(default)]
-    pub reasoning_effort: Option<super::ReasoningEffort>,
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 fn default_top_p() -> f32 {
@@ -101,6 +102,29 @@ fn generate_guided_tokens(
     }
 }
 
+/// Helper checking if tokenizer encodes `</think>` to exactly 1 token.
+pub fn is_thinking_model(tokenizer: &EngineTokenizer) -> bool {
+    tokenizer
+        .encode("</think>", false)
+        .map(|toks| toks.len() == 1)
+        .unwrap_or(false)
+}
+
+fn read_available_memory_bytes() -> u64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|info| {
+            for line in info.lines() {
+                if let Some(rest) = line.strip_prefix("MemAvailable:") {
+                    let kb = rest.trim_start().split_whitespace().next()?.parse::<u64>().ok()?;
+                    return Some(kb * 1024);
+                }
+            }
+            None
+        })
+        .unwrap_or(0)
+}
+
 fn generate_with_budget(
     session: &mut runtimed_model::Session,
     entry: &EngineEntry,
@@ -115,7 +139,12 @@ fn generate_with_budget(
         .ok()
         .and_then(|v| v.first().copied())
         .unwrap_or_else(|| entry.eos.first().copied().unwrap_or(0));
-    let mut tb = ThinkBudget::with_initial_phase(reasoning_budget, end_id, ThinkingPhase::Thinking);
+    let initial_phase = if req.prompt.trim_end().ends_with("<think>") {
+        ThinkingPhase::Thinking
+    } else {
+        ThinkingPhase::NotThinking
+    };
+    let mut tb = ThinkBudget::with_initial_phase(reasoning_budget, end_id, initial_phase);
     if let Ok(toks) = entry.tokenizer.encode("<think>", false) {
         if let Some(&tid) = toks.first() { tb.set_think_token_id(tid); }
     }
@@ -165,7 +194,20 @@ pub fn generate_tokens(
     } else if let Some(effort) = request.reasoning_effort {
         (true, effort.to_budget(entry.meta.context_window))
     } else {
-        (false, None)
+        let is_thinking = is_thinking_model(&entry.tokenizer);
+        let avail_mem = read_available_memory_bytes();
+        let psi_some = crate::psi::read_memory_psi(std::path::Path::new(crate::psi::DEFAULT_PSI_MEMORY_PATH))
+            .map(|(s, _)| s)
+            .unwrap_or(0.0);
+        let effort = ReasoningEffort::resolve_adaptive_default(
+            is_thinking,
+            &entry.meta.compute_backend,
+            entry.meta.memory_bytes,
+            avail_mem,
+            psi_some,
+        );
+        let effective_budget = effort.to_budget(entry.meta.context_window);
+        (is_thinking, effective_budget)
     };
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
         generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "b083d0d",
+ "rev": "ca3545e",
  "dirty": true,
  "pages": [
   {
@@ -138,14 +138,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 206,
+   "lines": 248,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
-   "lines": 55,
+   "lines": 89,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -180,7 +180,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/think_budget.rs",
-   "lines": 227,
+   "lines": 251,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

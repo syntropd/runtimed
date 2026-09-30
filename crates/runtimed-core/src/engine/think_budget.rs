@@ -22,10 +22,15 @@ pub enum BudgetAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
+    #[serde(alias = "off", alias = "0", alias = "disabled", alias = "false")]
     None,
+    #[serde(alias = "1")]
     Low,
+    #[serde(alias = "med", alias = "2")]
     Medium,
+    #[serde(alias = "3")]
     High,
+    #[serde(alias = "unlimited", alias = "full")]
     Max,
 }
 
@@ -45,12 +50,12 @@ impl ReasoningEffort {
 impl std::str::FromStr for ReasoningEffort {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "none" => Ok(Self::None),
-            "low" => Ok(Self::Low),
-            "medium" => Ok(Self::Medium),
-            "high" => Ok(Self::High),
-            "max" => Ok(Self::Max),
+        match s.trim().to_ascii_lowercase().as_str() {
+            "none" | "off" | "0" | "disabled" | "false" => Ok(Self::None),
+            "low" | "1" => Ok(Self::Low),
+            "medium" | "med" | "2" => Ok(Self::Medium),
+            "high" | "3" => Ok(Self::High),
+            "max" | "full" | "unlimited" => Ok(Self::Max),
             other => Err(format!("unknown reasoning effort: {other}")),
         }
     }
@@ -129,7 +134,10 @@ impl ThinkBudget {
 
     pub fn enforce_logits(&self, logits: &mut [f32]) -> bool {
         if let Some(b) = self.budget {
-            if self.tokens_consumed >= b && self.phase == ThinkingPhase::Thinking {
+            if self.tokens_consumed >= b
+                && self.phase == ThinkingPhase::Thinking
+                && (self.end_think_token_id as usize) < logits.len()
+            {
                 for (idx, val) in logits.iter_mut().enumerate() {
                     if idx as u32 == self.end_think_token_id {
                         *val = 0.0;
@@ -223,5 +231,20 @@ mod tests {
         assert_eq!(ReasoningEffort::High.to_budget(8192), Some(4096));
         assert_eq!(ReasoningEffort::High.to_budget(65536), Some(16384));
         assert_eq!(ReasoningEffort::Max.to_budget(8192), None);
+    }
+
+    #[test]
+    fn test_enforce_logits_out_of_bounds() {
+        let tb = ThinkBudget::with_initial_phase(Some(0), 9999, ThinkingPhase::Thinking);
+        let mut logits = vec![1.0, 2.0];
+        assert!(!tb.enforce_logits(&mut logits));
+        assert_eq!(logits, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_reasoning_effort_from_str_aliases() {
+        assert_eq!("off".parse(), Ok(ReasoningEffort::None));
+        assert_eq!("med".parse(), Ok(ReasoningEffort::Medium));
+        assert_eq!("unlimited".parse(), Ok(ReasoningEffort::Max));
     }
 }

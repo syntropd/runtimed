@@ -29,7 +29,7 @@ type GenerationResult (
   duration_ms: int
 )
 
-method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, reasoning_budget: ?int) -> (result: GenerationResult)
+method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, reasoning_budget: ?int, reasoning_effort: ?string) -> (result: GenerationResult)
 method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
 method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
 method GetLoad() -> (available_slots: int, max_slots: int, used_bytes: int, models: []LoadedModel)

@@ -46,6 +46,37 @@ pub fn dequant_q8_0_block(block: &[u8]) -> [f32; 32] {
     out
 }
 
+/// One Q4_0 block (18 bytes) → 32 floats: `y = d * (q - 8)`.
+pub fn dequant_q4_0_block(block: &[u8]) -> [f32; 32] {
+    let d = read_f16(&block[0..2]);
+    let mut out = [0.0f32; 32];
+    for i in 0..16 {
+        let byte = block[2 + i];
+        let v0 = (byte & 0x0F) as i8 - 8;
+        let v1 = (byte >> 4) as i8 - 8;
+        out[i] = d * v0 as f32;
+        out[i + 16] = d * v1 as f32;
+    }
+    out
+}
+
+/// One Q5_0 block (22 bytes) → 32 floats: `y = d * (q - 16)`.
+pub fn dequant_q5_0_block(block: &[u8]) -> [f32; 32] {
+    let d = read_f16(&block[0..2]);
+    let qh = u32::from_le_bytes([block[2], block[3], block[4], block[5]]);
+    let mut out = [0.0f32; 32];
+    for i in 0..16 {
+        let byte = block[6 + i];
+        let h0 = ((qh >> i) & 1) as u8;
+        let h1 = ((qh >> (i + 16)) & 1) as u8;
+        let v0 = ((byte & 0x0F) | (h0 << 4)) as i8 - 16;
+        let v1 = ((byte >> 4) | (h1 << 4)) as i8 - 16;
+        out[i] = d * v0 as f32;
+        out[i + 16] = d * v1 as f32;
+    }
+    out
+}
+
 
 /// Whole-tensor decode. `n_elements` must be an exact block multiple.
 pub fn dequant_tensor(dtype: GgmlDtype, bytes: &[u8], n_elements: usize) -> Result<Vec<f32>> {
@@ -76,6 +107,16 @@ pub fn dequant_tensor(dtype: GgmlDtype, bytes: &[u8], n_elements: usize) -> Resu
         GgmlDtype::BF16 => {
             for c in bytes[..need].chunks_exact(2) {
                 out.push(f32::from_bits((u16::from_le_bytes([c[0], c[1]]) as u32) << 16));
+            }
+        }
+        GgmlDtype::Q4_0 => {
+            for b in bytes[..need].chunks_exact(18) {
+                out.extend_from_slice(&dequant_q4_0_block(b));
+            }
+        }
+        GgmlDtype::Q5_0 => {
+            for b in bytes[..need].chunks_exact(22) {
+                out.extend_from_slice(&dequant_q5_0_block(b));
             }
         }
         GgmlDtype::Q8_0 => {

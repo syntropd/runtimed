@@ -141,6 +141,11 @@ impl Runtime1Handler {
             .and_then(|v| v.as_u64())
             .map(|v| v as usize);
 
+        let reasoning_effort = params
+            .get("reasoning_effort")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<runtimed_core::engine::ReasoningEffort>().ok());
+
         // Loading dequantizes gigabytes; keep it off the async executor.
         let manager = Arc::clone(&self.model_manager);
         let name_owned = model_name.to_string();
@@ -170,6 +175,10 @@ impl Runtime1Handler {
             }
         };
 
+        let effective_budget = reasoning_budget.or_else(|| {
+            reasoning_effort.and_then(|e| e.to_budget(entry.meta.context_window))
+        });
+
         let request = GenerationRequest {
             model: model_name.to_string(),
             prompt: prompt.to_string(),
@@ -181,7 +190,8 @@ impl Runtime1Handler {
             image_base64,
             grammar_type,
             grammar,
-            reasoning_budget,
+            reasoning_budget: effective_budget,
+            reasoning_effort,
         };
 
         // Generation is synchronous CPU work; run it off the async executor.

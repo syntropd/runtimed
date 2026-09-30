@@ -37,6 +37,7 @@ mod tests {
             grammar_type: None,
             grammar: None,
             reasoning_budget: None,
+            reasoning_effort: None,
         };
 
         match generate_tokens(&entry, &request) {

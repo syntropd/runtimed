@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "8e6a667",
+ "rev": "b083d0d",
  "dirty": true,
  "pages": [
   {
@@ -138,28 +138,35 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 248,
+   "lines": 206,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
+   "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
+   "lines": 55,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
    "path": "./crates/runtimed-core/src/engine/mm.rs",
-   "lines": 137,
+   "lines": 139,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-core/src/engine/mod.rs",
-   "lines": 14,
+   "lines": 17,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/engine/speculate_engine.rs",
-   "lines": 97,
+   "lines": 105,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -173,10 +180,10 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/think_budget.rs",
-   "lines": 182,
+   "lines": 227,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-core/src/error.rs",
@@ -390,7 +397,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 221,
+   "lines": 237,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 6
@@ -495,14 +502,14 @@
   },
   {
    "path": "./crates/runtimed-gguf/src/quant/dequant.rs",
-   "lines": 128,
+   "lines": 169,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
   },
   {
    "path": "./crates/runtimed-gguf/src/quant/dtype.rs",
-   "lines": 90,
+   "lines": 92,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
@@ -666,7 +673,7 @@
    "lines": 138,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 10
+   "reach": 11
   },
   {
    "path": "./crates/runtimed-model/src/decode/mod.rs",
@@ -691,7 +698,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
-   "lines": 127,
+   "lines": 141,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -789,7 +796,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/sampler/json_fsm.rs",
-   "lines": 213,
+   "lines": 244,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -971,7 +978,7 @@
   },
   {
    "path": "./qa/edge/src/context_edge.rs",
-   "lines": 49,
+   "lines": 51,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1055,7 +1062,7 @@
   },
   {
    "path": "./qa/unit/src/engine/generator_tests.rs",
-   "lines": 79,
+   "lines": 81,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

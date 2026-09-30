@@ -50,6 +50,8 @@ impl GgmlDtype {
         let b = match self {
             Self::F32 => (1, 4),
             Self::F16 | Self::BF16 => (1, 2),
+            Self::Q4_0 => (32, 18),
+            Self::Q5_0 => (32, 22),
             Self::Q8_0 => (32, 34),
             Self::Q4K => (256, 144),
             Self::Q5K => (256, 176),

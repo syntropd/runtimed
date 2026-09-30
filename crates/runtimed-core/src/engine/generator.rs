@@ -30,6 +30,8 @@ pub struct GenerationRequest {
     pub grammar: Option<String>,
     #[serde(default)]
     pub reasoning_budget: Option<usize>,
+    #[serde(default)]
+    pub reasoning_effort: Option<super::ReasoningEffort>,
 }
 
 fn default_top_p() -> f32 {
@@ -104,7 +106,7 @@ fn generate_with_budget(
     entry: &EngineEntry,
     prompt_ids: &[u32],
     budget: usize,
-    reasoning_budget: usize,
+    reasoning_budget: Option<usize>,
     req: &GenerationRequest,
     mut rng: Rng,
 ) -> Result<Vec<u32>, RuntimedError> {
@@ -113,7 +115,7 @@ fn generate_with_budget(
         .ok()
         .and_then(|v| v.first().copied())
         .unwrap_or_else(|| entry.eos.first().copied().unwrap_or(0));
-    let mut tb = ThinkBudget::with_initial_phase(Some(reasoning_budget), end_id, ThinkingPhase::Thinking);
+    let mut tb = ThinkBudget::with_initial_phase(reasoning_budget, end_id, ThinkingPhase::Thinking);
     if let Ok(toks) = entry.tokenizer.encode("<think>", false) {
         if let Some(&tid) = toks.first() { tb.set_think_token_id(tid); }
     }
@@ -158,9 +160,16 @@ pub fn generate_tokens(
     let mut session = entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
+    let (is_budgeted, rb) = if let Some(rb) = request.reasoning_budget {
+        (true, Some(rb))
+    } else if let Some(effort) = request.reasoning_effort {
+        (true, effort.to_budget(entry.meta.context_window))
+    } else {
+        (false, None)
+    };
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
         generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?
-    } else if let Some(rb) = request.reasoning_budget {
+    } else if is_budgeted {
         generate_with_budget(&mut *session, entry, &prompt_ids, budget, rb, request, rng)?
     } else {
         generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
@@ -193,52 +202,5 @@ pub(super) fn finish(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn gated_q4k() -> Option<std::path::PathBuf> {
-        let path = std::path::PathBuf::from(std::env::var("SYNTROP_TEST_GGUF_Q4K").ok()?);
-        if !path.exists() { return None; }
-        Some(path)
-    }
-
-    #[test]
-    fn rng_is_deterministic_per_seed() {
-        let (mut a, mut b) = (Rng(42), Rng(42));
-        for _ in 0..8 { assert_eq!(a.next_f32(), b.next_f32()); }
-        let mut c = Rng(42);
-        let (x, y) = (c.next_f32(), c.next_f32());
-        assert!((0.0..1.0).contains(&x) && (0.0..1.0).contains(&y));
-    }
-
-    #[test]
-    fn entropy_seed_is_odd() {
-        assert_eq!(entropy_seed() & 1, 1);
-    }
-
-    #[test]
-    fn request_serde_applies_sampler_defaults() {
-        let req: GenerationRequest = serde_json::from_value(serde_json::json!({
-            "model": "m", "prompt": "p", "max_tokens": 8, "temperature": 0.0
-        })).unwrap();
-        assert_eq!(req.top_p, 1.0);
-        assert_eq!(req.top_k, 0);
-        assert_eq!(req.seed, 0);
-        assert_eq!(req.image_base64, None);
-        assert_eq!(req.grammar_type, None);
-        assert_eq!(req.reasoning_budget, None);
-    }
-
-    #[test]
-    fn bpe_text_prompts_get_chat_template() {
-        let Some(path) = gated_q4k() else { return };
-        let file = runtimed_gguf::GgufFile::open(&path).expect("parse");
-        let bpe = runtimed_gguf::GgufBpe::from_gguf(&file).expect("bpe");
-        let tok = EngineTokenizer::Bpe(bpe);
-        let ids = text_prompt_ids(&tok, "Say hello.", true).expect("prompt ids");
-        assert_eq!(&ids[..2], &[2, 105]);
-        let raw = tok.encode("Say hello.", true).expect("raw");
-        assert!(ids.len() > raw.len() + 8);
-        assert_ne!(ids, raw);
-    }
-}
+#[path = "generator_tests.rs"]
+mod tests;

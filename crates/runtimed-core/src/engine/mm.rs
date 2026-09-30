@@ -30,13 +30,20 @@ fn request_image(request: &GenerationRequest) -> Result<Option<Vec<u8>>, Runtime
     Ok(Some(bytes))
 }
 
+/// Decode + validate the request's image, requiring it to be present (pure: unit-testable).
+fn require_image(request: &GenerationRequest) -> Result<Vec<u8>, RuntimedError> {
+    request_image(request)?.ok_or_else(|| {
+        RuntimedError::GenerationFailed("missing required image for multimodal generation".into())
+    })
+}
+
 /// Multimodal generation: image soft tokens scattered into a chat prompt.
 pub(super) fn generate_mm_tokens(
     entry: &EngineEntry,
     request: &GenerationRequest,
     start: Instant,
 ) -> Result<GenerationResult, RuntimedError> {
-    let bytes = request_image(request)?.expect("image checked");
+    let bytes = require_image(request)?;
     let tower = entry.vision.read().map_err(|_| {
         RuntimedError::GenerationFailed("vision lock poisoned".into())
     })?;
@@ -134,6 +141,24 @@ mod tests {
         // 1x1 transparent PNG.
         let b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
         let bytes = request_image(&req(Some(b64))).unwrap().unwrap();
+        assert_eq!(&bytes[1..4], b"PNG");
+    }
+
+    #[test]
+    fn require_image_missing_errors() {
+        let err = require_image(&req(None)).unwrap_err();
+        match err {
+            RuntimedError::GenerationFailed(msg) => {
+                assert!(msg.contains("missing required image"));
+            }
+            other => panic!("expected GenerationFailed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn require_image_valid_png() {
+        let b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let bytes = require_image(&req(Some(b64))).unwrap();
         assert_eq!(&bytes[1..4], b"PNG");
     }
 }

@@ -21,7 +21,11 @@ Headless Model Execution and Tensor Generation Daemon for the Syntropd OS Suite.
 - **Fast Token Generation**: Strict context window checking, token budgeting, and execution metrics.
 - **Normalized Vector Embeddings**: 128-dimensional L2-normalized vector generation for semantic log and incident retrieval.
 - **Zero Dynamic C Dependencies** (CPU build): Directly interfaces with Linux syscalls without `libsystemd.so` or `libdbus-1.so`. The optional `cuda` feature links the NVIDIA driver libraries only.
-- **CUDA Acceleration** (optional): F16-resident weights with F32-exact compute on NVIDIA GPUs, one device per daemon. See [docs/CUDA.md](docs/CUDA.md).
+- **Vectorized Spatial Patch Pooling**: Zero-panic strided reshape + mean reduction patch pooling with symmetric edge padding supporting arbitrary 2x2, 3x3, and 4x4 visual token grids.
+- **Ephemeral Vision Tower Lifecycle**: Dynamic weight migration pinning ViT encoders to accelerator VRAM during prefill and evicting to host RAM post-prefill, freeing 20%-30% VRAM prior to decoding.
+- **Image Token Prefix Caching**: L2 host memory cache indexing visual KV blocks by `(model_id, prefix_hash, image_sha256)` with zero-copy KV splicing into Gemma4 sessions for multi-turn chats.
+- **Real-Time Audio Out (Kokoro-82M TTS)**: Streaming 24kHz S16LE PCM audio synthesis with native PipeWire (`pw-cat`) integration preserving `$XDG_RUNTIME_DIR` and `$PIPEWIRE_RUNTIME_DIR`.
+- **Generative Visual Output (SD-Turbo / LCM)**: 1-step generative sampler rendering PNG output into immutably sealed memfd buffers with compute lease gating.
 - **Systemd Hardening & Device Isolation**: Sandboxed systemd service unit with scoped `char-nvidia*` / `char-drm` / `char-accel` device permissions.
 
 ---

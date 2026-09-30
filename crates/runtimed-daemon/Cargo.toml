@@ -24,6 +24,7 @@ anyhow.workspace = true
 libc.workspace = true
 rustix.workspace = true
 runtimed-core = { package = "syntrop-runtimed-core", version = "0.5.2", path = "../runtimed-core" }
+runtimed-model = { package = "syntrop-runtimed-model", version = "0.5.2", path = "../runtimed-model" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

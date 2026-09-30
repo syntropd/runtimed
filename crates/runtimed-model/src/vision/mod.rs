@@ -4,9 +4,12 @@
 //! axial RoPE, clippable linears) emits pooled soft tokens projected to
 //! text width. Preprocessing lives in [`crate::vision::vpre`].
 
+pub mod ephemeral;
+pub mod pool_patches;
 pub mod vpre;
 pub mod vresize;
 
+pub use crate::vision::pool_patches::pool_patches;
 pub use crate::vision::vpre::{prepare, PreparedImage};
 
 use crate::error::{ModelError, Result};
@@ -80,8 +83,8 @@ impl VisionConfig {
 }
 /// The vision tower: encoder weights plus config.
 pub struct VisionTower {
-    cfg: VisionConfig,
-    w: Weights,
+    pub(crate) cfg: VisionConfig,
+    pub(crate) w: Weights,
 }
 
 impl VisionTower {
@@ -177,8 +180,8 @@ impl VisionTower {
         for i in 0..cfg.n_layer {
             h = self.block(i, &h, img)?;
         }
-        // 3x3 average pool over the patch grid, scaled by sqrt(hidden).
-        h = avg_pool_3x3(&h, img.grid_w, img.grid_h)?;
+        // Spatial average pool over the patch grid, scaled by sqrt(hidden).
+        h = pool_patches(&h, img.grid_w, img.grid_h, cfg.merge)?;
         let h = h.affine((cfg.hidden as f32).sqrt() as f64, 0.0)?;
         // Projector: scaleless norm, linear to text width.
         let h = ops::rms_norm_plain(&h, cfg.eps)?;
@@ -194,25 +197,9 @@ fn axial_rope(x: &Tensor, pos_x: &[usize], pos_y: &[usize], half: usize) -> Resu
     Ok(Tensor::cat(&[&a, &b], 3)?)
 }
 
-/// 3x3 non-overlapping average pool on `[1, gh*gw, c]` row-major patches.
-fn avg_pool_3x3(h: &Tensor, gw: usize, gh: usize) -> Result<Tensor> {
-    assert_eq!(h.dim(1)?, gw * gh, "grid geometry");
-    assert_eq!(gw % 3, 0, "grid width pools cleanly");
-    assert_eq!(gh % 3, 0, "grid height pools cleanly");
-    let c = h.dim(2)?;
-    let flat = h.reshape((gh, gw, c))?;
-    let mut rows = Vec::with_capacity((gh / 3) * (gw / 3));
-    for oy in 0..gh / 3 {
-        for ox in 0..gw / 3 {
-            let cell = flat
-                .narrow(0, oy * 3, 3)?
-                .narrow(1, ox * 3, 3)?
-                .mean((0, 1))?;
-            rows.push(cell);
-        }
-    }
-    let stacked = Tensor::stack(&rows.iter().collect::<Vec<_>>(), 0)?;
-    Ok(stacked.unsqueeze(0)?)
+/// Vectorized 3x3 average pool on `[1, gh*gw, c]` row-major patches with edge padding.
+pub fn avg_pool_3x3(h: &Tensor, gw: usize, gh: usize) -> Result<Tensor> {
+    pool_patches(h, gw, gh, 3)
 }
 
 #[cfg(test)]

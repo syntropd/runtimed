@@ -34,6 +34,8 @@ method Embed(model: string, text: string) -> (embedding: []float)
 method GetModelStatus(model: string) -> (status: string, model: ?LoadedModel)
 method UnloadModel(model: string) -> (freed_bytes: int)
 method ListLoadedModels() -> (models: []LoadedModel)
+method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (bytes_streamed: int, sample_rate: int, channels: int)
+method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (bytes: int, width: int, height: int, format: string, memfd_sealed: bool)
 
 error ModelNotFound(model: string)
 error ContextExceeded(requested: int, max: int)
@@ -110,3 +112,31 @@ Lists all models currently resident in memory.
 - Parameters: none
 - Returns:
   - `models` (`[]LoadedModel`): Array of active model metadata records.
+
+### 2.9 `StreamAudioOut`
+Streams synthesized 24kHz S16LE PCM speech directly to PipeWire or returns bytes.
+- Parameters:
+  - `text` (string): Text content to synthesize.
+  - `voice` (?string, optional): Target voice style profile.
+  - `sink_type` (?string, optional): "auto", "pipewire", or "buffer".
+- Returns:
+  - `bytes_streamed` (int): Number of PCM bytes produced.
+  - `sample_rate` (int): Audio sample rate (24000 Hz).
+  - `channels` (int): Channel count (1, mono).
+
+### 2.10 `GenerateVisual`
+Executes 1-step visual generation into an immutably sealed memfd buffer under compute lease gating.
+- Parameters:
+  - `prompt` (string): Image description prompt.
+  - `width` (?int, optional): Image width in pixels (default 512).
+  - `height` (?int, optional): Image height in pixels (default 512).
+  - `seed` (?int, optional): Deterministic generation seed.
+  - `steps` (?int, optional): Diffusion/LCM step count (default 1).
+  - `lease_id` (?string, optional): Active compute lease identifier.
+- Returns:
+  - `bytes` (int): Size of generated PNG buffer.
+  - `width` (int): Result image width.
+  - `height` (int): Result image height.
+  - `format` (string): Image encoding format ("png").
+  - `memfd_sealed` (bool): True if delivered via sealed memfd.
+

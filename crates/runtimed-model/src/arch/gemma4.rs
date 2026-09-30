@@ -45,6 +45,19 @@ impl Cache {
             }
         }
     }
+
+    /// Splice visual KV blocks into cache on the target device.
+    pub fn splice_kv(&mut self, kv: &[Option<(Tensor, Tensor)>], dev: &candle_core::Device) -> Result<()> {
+        for (i, (k, v)) in kv.iter().enumerate().filter_map(|(i, o)| o.as_ref().map(|p| (i, p))) {
+            if i >= self.layers.len() { break; }
+            let (kd, vd) = (k.to_device(dev)?, v.to_device(dev)?);
+            self.layers[i] = match self.layers[i].take() {
+                Some((ok, ov)) => Some((Tensor::cat(&[&ok, &kd], 2)?, Tensor::cat(&[&ov, &vd], 2)?)),
+                None => Some((kd, vd)),
+            };
+        }
+        Ok(())
+    }
 }
 
 /// Per-layer inputs `[1, seq, n_layer, ple]`: token identity plus a

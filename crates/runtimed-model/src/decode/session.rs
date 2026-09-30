@@ -119,6 +119,15 @@ impl Session {
         }
     }
 
+    /// Splice pre-computed visual KV blocks into the active cache.
+    pub fn splice_visual_kv(&mut self, kv_layers: &[Option<(Tensor, Tensor)>]) -> Result<()> {
+        let dev = self.device().clone();
+        match &mut self.kind {
+            Kind::Gemma4(c) => c.splice_kv(kv_layers, &dev),
+            Kind::Qwen2(_) => Err(ModelError::Config("visual KV splicing unsupported for Qwen2".into())),
+        }
+    }
+
     /// Fuse a LoRA adapter into the live weights (base file untouched).
     /// Returns the fused base names. The KV cache is unaffected (weights
     /// only change future forwards); callers should `reset` first anyway.

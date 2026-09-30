@@ -5,6 +5,7 @@
 //! out explicitly. Candle provides matmul/softmax/transpose only.
 
 pub mod arch;
+pub mod audio;
 pub mod cache;
 pub mod config;
 pub mod decode;
@@ -16,7 +17,11 @@ pub mod sampler;
 pub mod tokenizer;
 pub mod tp;
 pub mod vision;
+pub mod visual_gen;
 pub mod weights;
+
+pub use audio::{BufferSink, KokoroConfig, KokoroEngine, PcmSink, PwCatSink};
+pub use visual_gen::{create_sealed_memfd, VisualComputeLease, VisualGenConfig, VisualGenSampler};
 
 pub use cache::{
     sink_causal_mask, CacheBlock, PagedKvCache, SinkWindowCache, SinkWindowConfig, SpillManager,

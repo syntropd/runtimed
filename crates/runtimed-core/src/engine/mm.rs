@@ -44,12 +44,22 @@ pub(super) fn generate_mm_tokens(
     start: Instant,
 ) -> Result<GenerationResult, RuntimedError> {
     let bytes = require_image(request)?;
-    let tower = entry.vision.read().map_err(|_| {
+    let dev = {
+        let session = entry
+            .session
+            .lock()
+            .map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
+        session.device().clone()
+    };
+    let mut tower_lock = entry.vision.write().map_err(|_| {
         RuntimedError::GenerationFailed("vision lock poisoned".into())
     })?;
-    let tower = tower.as_ref().ok_or_else(|| {
+    let tower = tower_lock.as_mut().ok_or_else(|| {
         RuntimedError::GenerationFailed("model has no vision tower (attach one first)".into())
     })?;
+    tower
+        .pin(&dev)
+        .map_err(|e| RuntimedError::GenerationFailed(format!("vision pin: {e}")))?;
     let bpe = entry.tokenizer.as_bpe().ok_or_else(|| {
         RuntimedError::GenerationFailed("multimodal needs a GGUF-BPE model".into())
     })?;
@@ -58,6 +68,10 @@ pub(super) fn generate_mm_tokens(
     let soft = tower
         .encode(&prep)
         .map_err(|e| RuntimedError::GenerationFailed(format!("vision: {e}")))?;
+    tower
+        .unpin()
+        .map_err(|e| RuntimedError::GenerationFailed(format!("vision unpin: {e}")))?;
+    drop(tower_lock);
     let prompt_ids =
         chat::mm_prompt(bpe, &request.prompt, prep.n_soft).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
     if prompt_ids.len() > entry.meta.context_window {

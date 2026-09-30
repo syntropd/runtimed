@@ -60,6 +60,8 @@ method Embed(model: string, text: string) -> (embedding: []float)
 method GetModelStatus(model: string) -> (status: string, model: ?LoadedModel)
 method UnloadModel(model: string) -> (freed_bytes: int)
 method ListLoadedModels() -> (models: []LoadedModel)
+method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (bytes_streamed: int, sample_rate: int, channels: int)
+method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (bytes: int, width: int, height: int, format: string, memfd_sealed: bool)
 
 error ModelNotFound(model: string)
 error ContextExceeded(requested: int, max: int)

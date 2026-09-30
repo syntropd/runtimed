@@ -1,0 +1,146 @@
+//! PCM Audio sinks for real-time audio playback and test buffering.
+//!
+//! Provides the `PcmSink` trait along with:
+//! - `PwCatSink`: Streams 24kHz S16LE PCM directly to `/usr/bin/pw-cat` via PipeWire,
+//!   preserving `$XDG_RUNTIME_DIR` and `$PIPEWIRE_RUNTIME_DIR`.
+//! - `BufferSink`: Captures raw PCM bytes in memory for deterministic unit testing.
+
+use std::io::{self, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
+
+/// Sink receiving 24kHz S16LE mono audio PCM.
+pub trait PcmSink: Send + Sync {
+    /// Write 16-bit signed PCM samples.
+    fn write_pcm(&mut self, samples: &[i16]) -> io::Result<()> {
+        let mut bytes = Vec::with_capacity(samples.len() * 2);
+        for &s in samples {
+            bytes.extend_from_slice(&s.to_le_bytes());
+        }
+        self.write_bytes(&bytes)
+    }
+
+    /// Write raw little-endian PCM bytes.
+    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()>;
+
+    /// Flush pending audio data to the backend.
+    fn flush(&mut self) -> io::Result<()>;
+}
+
+/// Buffer sink storing PCM audio in memory for unit testing and offline capture.
+#[derive(Default, Debug, Clone)]
+pub struct BufferSink {
+    buffer: Vec<u8>,
+}
+
+impl BufferSink {
+    pub fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.buffer
+    }
+
+    pub fn samples(&self) -> Vec<i16> {
+        self.buffer
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect()
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+}
+
+impl PcmSink for BufferSink {
+    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.buffer.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Audio sink streaming 24kHz S16LE PCM directly to `/usr/bin/pw-cat`.
+pub struct PwCatSink {
+    child: Child,
+    stdin: ChildStdin,
+}
+
+impl PwCatSink {
+    /// Spawn `/usr/bin/pw-cat` with 24kHz S16LE mono playback, preserving PipeWire runtime env.
+    pub fn spawn() -> io::Result<Self> {
+        Self::spawn_with_path("/usr/bin/pw-cat")
+    }
+
+    pub fn spawn_with_path(bin_path: &str) -> io::Result<Self> {
+        let mut cmd = Command::new(bin_path);
+        cmd.args(["--playback", "--format=s16", "--rate=24000", "--channels=1", "-"]);
+        cmd.stdin(Stdio::piped());
+        cmd.stdout(Stdio::null());
+        cmd.stderr(Stdio::null());
+
+        if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
+            cmd.env("XDG_RUNTIME_DIR", xdg);
+        }
+        if let Ok(pw) = std::env::var("PIPEWIRE_RUNTIME_DIR") {
+            cmd.env("PIPEWIRE_RUNTIME_DIR", pw);
+        }
+
+        let mut child = cmd.spawn()?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "pw-cat stdin unavailable"))?;
+
+        Ok(Self { child, stdin })
+    }
+}
+
+impl PcmSink for PwCatSink {
+    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.stdin.write_all(bytes)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stdin.flush()
+    }
+}
+
+impl Drop for PwCatSink {
+    fn drop(&mut self) {
+        let _ = self.stdin.flush();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_buffer_sink_write_and_samples() {
+        let mut sink = BufferSink::new();
+        sink.write_pcm(&[100, -200, 300]).unwrap();
+        assert_eq!(sink.buffer().len(), 6);
+        assert_eq!(sink.samples(), vec![100, -200, 300]);
+
+        sink.write_bytes(&400i16.to_le_bytes()).unwrap();
+        assert_eq!(sink.samples(), vec![100, -200, 300, 400]);
+        sink.flush().unwrap();
+    }
+
+    #[test]
+    fn test_pw_cat_sink_handles_missing_binary() {
+        let res = PwCatSink::spawn_with_path("/nonexistent/pw-cat");
+        assert!(res.is_err());
+    }
+}

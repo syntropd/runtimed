@@ -1,10 +1,12 @@
 //! Two-tier block-based paged KV cache (L1 VRAM + L2 pinned host RAM).
 
+pub mod image_cache;
 pub mod paged_cache;
 pub mod sink_mask;
 pub mod sink_window;
 pub mod spill_manager;
 
+pub use image_cache::{ImageCache, ImageCacheKey, VisualKvEntry};
 pub use paged_cache::{CacheBlock, PagedKvCache, StorageTier, BLOCK_SIZE};
 pub use sink_mask::sink_causal_mask;
 pub use sink_window::{SinkWindowCache, SinkWindowConfig};

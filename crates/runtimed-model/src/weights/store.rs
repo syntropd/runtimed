@@ -123,6 +123,28 @@ impl Weights {
     pub fn contains_key(&self, name: &str) -> bool {
         self.map.contains_key(name)
     }
+
+    /// Migrate resident weights to target device, updating resident dtype
+    /// and returning total resident bytes migrated.
+    pub fn to_device(&mut self, target: &Device) -> Result<usize> {
+        Self::ensure_current(target)?;
+        let target_store = match target {
+            Device::Cuda(_) => DType::F16,
+            _ => DType::F32,
+        };
+        let mut total_bytes = 0;
+        for tensor in self.map.values_mut() {
+            let mut t = tensor.to_device(target)?;
+            if t.dtype() != target_store {
+                t = t.to_dtype(target_store)?;
+            }
+            total_bytes += t.elem_count() * t.dtype().size_in_bytes();
+            *tensor = t;
+        }
+        self.dev = target.clone();
+        self.store = target_store;
+        Ok(total_bytes)
+    }
 }
 
 #[cfg(test)]
@@ -133,4 +155,16 @@ mod tests {
     fn cpu_device_is_always_current() {
         assert!(Weights::ensure_current(&Device::Cpu).is_ok());
     }
+
+    #[test]
+    fn weights_to_device_cpu_roundtrip() {
+        let mut map = HashMap::new();
+        let t = Tensor::zeros((2, 2), DType::F32, &Device::Cpu).unwrap();
+        map.insert("t1".into(), t);
+        let mut w = Weights::from_parts(Device::Cpu, DType::F32, map);
+        let bytes = w.to_device(&Device::Cpu).unwrap();
+        assert_eq!(bytes, 2 * 2 * 4);
+        assert!(matches!(w.device(), Device::Cpu));
+    }
 }
+

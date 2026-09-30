@@ -62,7 +62,7 @@ pub fn prepare(bytes: &[u8], cfg: &VisionConfig) -> Result<PreparedImage> {
         pos_y,
         grid_w: gw,
         grid_h: gh,
-        n_soft: (gw / cfg.merge) * (gh / cfg.merge),
+        n_soft: (gw.div_ceil(cfg.merge)) * (gh.div_ceil(cfg.merge)),
     })
 }
 

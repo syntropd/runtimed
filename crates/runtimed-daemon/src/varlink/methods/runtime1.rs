@@ -43,6 +43,8 @@ impl Runtime1Handler {
             "io.syntrop.Runtime1.UnloadModel" => Some(self.handle_unload_model(params)),
             "io.syntrop.Runtime1.ListLoadedModels" => Some(self.handle_list_loaded_models()),
             "io.syntrop.Runtime1.Decide" => Some(self.handle_decide(params).await),
+            "io.syntrop.Runtime1.StreamAudioOut" => Some(super::multimedia::handle_stream_audio_out(params).await),
+            "io.syntrop.Runtime1.GenerateVisual" => Some(super::multimedia::handle_generate_visual(params).await),
             _ => None,
         }
     }

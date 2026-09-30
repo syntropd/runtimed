@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.6 (2026-09-30) — Multimedia Memory & Pipeline
+
+- **Vectorized Spatial Patch Pooling**: Zero-panic strided reshape + mean reduction patch pooling with symmetric edge replication padding supporting arbitrary 2x2, 3x3, and 4x4 visual token grids.
+- **Ephemeral Vision Tower Lifecycle**: ViT weights dynamically pin to accelerator VRAM during prefill and evict to host RAM post-prefill, freeing 20%-30% VRAM prior to decoding.
+- **Image Token Prefix Caching**: L2 host memory cache indexing visual KV blocks by `(model_id, prefix_hash, image_sha256)` with zero-copy KV splicing into Gemma4 sessions for multi-turn chats.
+- **Real-Time Audio Out (Kokoro-82M TTS)**: Streaming 24kHz S16LE PCM speech directly to PipeWire (`pw-cat`) via `io.syntrop.Runtime1.StreamAudioOut`.
+- **Generative Visual Output (SD-Turbo / LCM)**: 1-step generative sampler rendering PNG output into immutably sealed memfd buffers with compute lease gating via `io.syntrop.Runtime1.GenerateVisual`.
+
 ## Unreleased
 
 - **Gemma4 text prompts templated**: plain `Generate` calls on GGUF-BPE

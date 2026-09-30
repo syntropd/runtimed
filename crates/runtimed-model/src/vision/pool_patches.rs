@@ -24,17 +24,24 @@ pub fn pool_patches(h: &Tensor, gw: usize, gh: usize, k: usize) -> Result<Tensor
             got: h.dims().to_vec(),
         });
     }
+    let b = h.dim(0)?;
+    if b == 0 {
+        return Err(ModelError::Config("batch size cannot be zero".into()));
+    }
     let expected_n = gw * gh;
     let actual_n = h.dim(1)?;
     if actual_n != expected_n {
         return Err(ModelError::Shape {
             name: "pool_grid_mismatch".into(),
-            expected: vec![1, expected_n, h.dim(2)?],
+            expected: vec![b, expected_n, h.dim(2)?],
             got: h.dims().to_vec(),
         });
     }
     let c = h.dim(2)?;
-    let mut grid = h.reshape((1, gh, gw, c))?;
+    if c == 0 {
+        return Err(ModelError::Config("channel dimension cannot be zero".into()));
+    }
+    let mut grid = h.reshape((b, gh, gw, c))?;
 
     // Symmetric edge padding for width.
     let padded_gw = gw.div_ceil(k) * k;
@@ -88,10 +95,10 @@ pub fn pool_patches(h: &Tensor, gw: usize, gh: usize, k: usize) -> Result<Tensor
     let out_w = padded_gw / k;
 
     // Strided reshape -> permute -> mean reduction -> final tokens reshape.
-    let x = grid.reshape((1, out_h, k, out_w, k, c))?;
+    let x = grid.reshape((b, out_h, k, out_w, k, c))?;
     let x = x.permute((0, 1, 3, 2, 4, 5))?.contiguous()?;
     let x = x.mean((3, 4))?;
-    let out = x.reshape((1, out_h * out_w, c))?;
+    let out = x.reshape((b, out_h * out_w, c))?;
     Ok(out)
 }
 
@@ -142,6 +149,32 @@ mod tests {
         let h = Tensor::from_vec(data, (1, 49, 4), &dev).unwrap();
         let out = pool_patches(&h, 7, 7, 4).unwrap();
         assert_eq!(out.dims(), &[1, 4, 4]);
+    }
+
+    #[test]
+    fn test_pool_asymmetric_1x15_and_17x3() {
+        let dev = Device::Cpu;
+        // 1x15 with k=3: padded gw=3, padded gh=15 -> 1x5 = 5 soft tokens.
+        let data1 = vec![1.0f32; 15 * 2];
+        let h1 = Tensor::from_vec(data1, (1, 15, 2), &dev).unwrap();
+        let out1 = pool_patches(&h1, 1, 15, 3).unwrap();
+        assert_eq!(out1.dims(), &[1, 5, 2]);
+
+        // 17x3 with k=4: padded gw=20, padded gh=4 -> 5x1 = 5 soft tokens.
+        let data2 = vec![1.0f32; 51 * 2];
+        let h2 = Tensor::from_vec(data2, (1, 51, 2), &dev).unwrap();
+        let out2 = pool_patches(&h2, 17, 3, 4).unwrap();
+        assert_eq!(out2.dims(), &[1, 5, 2]);
+    }
+
+    #[test]
+    fn test_pool_multi_batch() {
+        let dev = Device::Cpu;
+        // Batch size 2: 2 images of 3x3 with 2 channels, k=3 -> [2, 1, 2].
+        let data = vec![3.0f32; 2 * 9 * 2];
+        let h = Tensor::from_vec(data, (2, 9, 2), &dev).unwrap();
+        let out = pool_patches(&h, 3, 3, 3).unwrap();
+        assert_eq!(out.dims(), &[2, 1, 2]);
     }
 
     #[test]

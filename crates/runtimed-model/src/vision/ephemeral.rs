@@ -68,5 +68,10 @@ mod tests {
         let unpinned_bytes = tower.unpin().unwrap();
         assert_eq!(unpinned_bytes, 4 * 4 * 4);
         assert!(matches!(tower.device(), Device::Cpu));
+
+        // Repeated unpin when already on CPU is idempotent.
+        let unpinned_again = tower.unpin().unwrap();
+        assert_eq!(unpinned_again, 4 * 4 * 4);
+        assert!(matches!(tower.device(), Device::Cpu));
     }
 }

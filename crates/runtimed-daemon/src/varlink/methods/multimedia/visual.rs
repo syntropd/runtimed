@@ -32,6 +32,7 @@ pub async fn handle_generate_visual(params: Option<&Value>) -> VarlinkReply {
     let width = params.get("width").and_then(|w| w.as_u64()).unwrap_or(512) as u32;
     let height = params.get("height").and_then(|h| h.as_u64()).unwrap_or(512) as u32;
     let seed = params.get("seed").and_then(|s| s.as_u64()).unwrap_or(0);
+    let steps = params.get("steps").and_then(|s| s.as_u64()).unwrap_or(1) as usize;
     let lease_id = params
         .get("lease_id")
         .and_then(|l| l.as_str())
@@ -43,8 +44,18 @@ pub async fn handle_generate_visual(params: Option<&Value>) -> VarlinkReply {
             Some(json!({ "parameter": "width/height (must be 1..=4096)" })),
         );
     }
+    if steps == 0 || steps > 50 {
+        return VarlinkReply::err(
+            "io.syntrop.Runtime1.InvalidParameter",
+            Some(json!({ "parameter": "steps (must be 1..=50)" })),
+        );
+    }
 
-    let sampler = VisualGenSampler::new();
+    let sampler = VisualGenSampler::with_config(runtimed_model::visual_gen::VisualGenConfig {
+        default_width: width,
+        default_height: height,
+        steps,
+    });
     let lease = VisualComputeLease::new(lease_id);
 
     match sampler.generate_to_sealed_memfd(prompt, width, height, seed, &lease) {
@@ -89,5 +100,24 @@ mod tests {
         let params = json!({ "width": 64 });
         let reply = handle_generate_visual(Some(&params)).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_visual_steps_validation() {
+        let bad_params = json!({
+            "prompt": "neon city",
+            "steps": 0
+        });
+        let reply = handle_generate_visual(Some(&bad_params)).await;
+        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+
+        let ok_params = json!({
+            "prompt": "neon city",
+            "width": 32,
+            "height": 32,
+            "steps": 2
+        });
+        let ok_reply = handle_generate_visual(Some(&ok_params)).await;
+        assert!(ok_reply.error.is_none());
     }
 }

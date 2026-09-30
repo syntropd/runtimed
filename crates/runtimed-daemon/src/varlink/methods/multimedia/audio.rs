@@ -57,7 +57,7 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
                     )
                 }
             };
-            match engine.synthesize(text, voice, &mut pw_sink) {
+            let bytes = match engine.synthesize(text, voice, &mut pw_sink) {
                 Ok(b) => b,
                 Err(e) => {
                     return VarlinkReply::err(
@@ -65,18 +65,33 @@ pub async fn handle_stream_audio_out(params: Option<&Value>) -> VarlinkReply {
                         Some(json!({ "reason": format!("tts streaming failed: {e}") })),
                     )
                 }
+            };
+            if let Err(e) = pw_sink.finish() {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": format!("pw-cat playback wait failed: {e}") })),
+                );
             }
+            bytes
         }
         _ => {
             // Auto mode: attempt pw-cat, fall back to buffer sink cleanly.
             if let Ok(mut pw_sink) = PwCatSink::spawn() {
                 match engine.synthesize(text, voice, &mut pw_sink) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return VarlinkReply::err(
-                            "io.syntrop.Runtime1.GenerationFailed",
-                            Some(json!({ "reason": format!("tts streaming failed: {e}") })),
-                        )
+                    Ok(b) => {
+                        let _ = pw_sink.finish();
+                        b
+                    }
+                    Err(_) => {
+                        match engine.synthesize(text, voice, &mut buffer_sink) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                return VarlinkReply::err(
+                                    "io.syntrop.Runtime1.GenerationFailed",
+                                    Some(json!({ "reason": format!("tts failed: {e}") })),
+                                )
+                            }
+                        }
                     }
                 }
             } else {

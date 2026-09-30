@@ -71,7 +71,7 @@ impl PcmSink for BufferSink {
 /// Audio sink streaming 24kHz S16LE PCM directly to `/usr/bin/pw-cat`.
 pub struct PwCatSink {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
 }
 
 impl PwCatSink {
@@ -100,25 +100,48 @@ impl PwCatSink {
             .take()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "pw-cat stdin unavailable"))?;
 
-        Ok(Self { child, stdin })
+        Ok(Self {
+            child,
+            stdin: Some(stdin),
+        })
+    }
+
+    /// Wait for pw-cat playback to finish, draining all buffered audio cleanly.
+    pub fn finish(mut self) -> io::Result<std::process::ExitStatus> {
+        if let Some(mut stdin) = self.stdin.take() {
+            let _ = stdin.flush();
+            drop(stdin);
+        }
+        self.child.wait()
     }
 }
 
 impl PcmSink for PwCatSink {
     fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.stdin.write_all(bytes)
+        match &mut self.stdin {
+            Some(stdin) => stdin.write_all(bytes),
+            None => Err(io::Error::new(io::ErrorKind::BrokenPipe, "pw-cat stdin closed")),
+        }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.stdin.flush()
+        match &mut self.stdin {
+            Some(stdin) => stdin.flush(),
+            None => Ok(()),
+        }
     }
 }
 
 impl Drop for PwCatSink {
     fn drop(&mut self) {
-        let _ = self.stdin.flush();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Some(mut stdin) = self.stdin.take() {
+            let _ = stdin.flush();
+            drop(stdin);
+        }
+        if let Ok(None) = self.child.try_wait() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 }
 
@@ -142,5 +165,15 @@ mod tests {
     fn test_pw_cat_sink_handles_missing_binary() {
         let res = PwCatSink::spawn_with_path("/nonexistent/pw-cat");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_pw_cat_sink_finish_and_lifecycle() {
+        if std::path::Path::new("/usr/bin/true").exists() {
+            let mut sink = PwCatSink::spawn_with_path("/usr/bin/true").unwrap();
+            let _ = sink.write_pcm(&[10, 20, 30]);
+            let status = sink.finish().unwrap();
+            assert!(status.success());
+        }
     }
 }

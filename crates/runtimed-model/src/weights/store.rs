@@ -132,6 +132,9 @@ impl Weights {
             Device::Cuda(_) => DType::F16,
             _ => DType::F32,
         };
+        if self.dev.same_device(target) && self.store == target_store {
+            return Ok(self.resident_bytes());
+        }
         let mut total_bytes = 0;
         for tensor in self.map.values_mut() {
             let mut t = tensor.to_device(target)?;
@@ -165,6 +168,9 @@ mod tests {
         let bytes = w.to_device(&Device::Cpu).unwrap();
         assert_eq!(bytes, 2 * 2 * 4);
         assert!(matches!(w.device(), Device::Cpu));
+        // Idempotent migration without redundant tensor copies.
+        let bytes2 = w.to_device(&Device::Cpu).unwrap();
+        assert_eq!(bytes2, bytes);
     }
 }
 

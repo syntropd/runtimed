@@ -60,18 +60,24 @@ pub(super) fn generate_mm_tokens(
     tower
         .pin(&dev)
         .map_err(|e| RuntimedError::GenerationFailed(format!("vision pin: {e}")))?;
-    let bpe = entry.tokenizer.as_bpe().ok_or_else(|| {
-        RuntimedError::GenerationFailed("multimodal needs a GGUF-BPE model".into())
-    })?;
-    let prep = runtimed_model::vision::prepare(&bytes, tower.config())
-        .map_err(|e| RuntimedError::GenerationFailed(format!("image: {e}")))?;
-    let soft = tower
-        .encode(&prep)
-        .map_err(|e| RuntimedError::GenerationFailed(format!("vision: {e}")))?;
-    tower
-        .unpin()
-        .map_err(|e| RuntimedError::GenerationFailed(format!("vision unpin: {e}")))?;
+    let bpe = match entry.tokenizer.as_bpe() {
+        Some(b) => b,
+        None => {
+            let _ = tower.unpin();
+            return Err(RuntimedError::GenerationFailed("multimodal needs a GGUF-BPE model".into()));
+        }
+    };
+    let encode_res = (|| -> Result<(runtimed_model::vision::PreparedImage, candle_core::Tensor), RuntimedError> {
+        let prep = runtimed_model::vision::prepare(&bytes, tower.config())
+            .map_err(|e| RuntimedError::GenerationFailed(format!("image: {e}")))?;
+        let soft = tower
+            .encode(&prep)
+            .map_err(|e| RuntimedError::GenerationFailed(format!("vision: {e}")))?;
+        Ok((prep, soft))
+    })();
+    let _ = tower.unpin();
     drop(tower_lock);
+    let (prep, soft) = encode_res?;
     let prompt_ids =
         chat::mm_prompt(bpe, &request.prompt, prep.n_soft).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
     if prompt_ids.len() > entry.meta.context_window {

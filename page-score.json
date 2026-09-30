@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "bde3829",
+ "rev": "9555dd1",
  "dirty": true,
  "pages": [
   {
@@ -180,7 +180,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/mm.rs",
-   "lines": 178,
+   "lines": 184,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -467,7 +467,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/audio.rs",
-   "lines": 128,
+   "lines": 143,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -481,7 +481,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/visual.rs",
-   "lines": 93,
+   "lines": 123,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -698,7 +698,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/audio/pcm_sink.rs",
-   "lines": 146,
+   "lines": 179,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -999,7 +999,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/vision/ephemeral.rs",
-   "lines": 72,
+   "lines": 77,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1013,7 +1013,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/vision/pool_patches.rs",
-   "lines": 156,
+   "lines": 189,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1034,7 +1034,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/memfd_target.rs",
-   "lines": 62,
+   "lines": 60,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -1083,7 +1083,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/weights/store.rs",
-   "lines": 170,
+   "lines": 176,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3

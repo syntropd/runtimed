@@ -91,7 +91,7 @@ impl ModelManager {
                 (s, m, tok, eos, sp)
             }
         } else {
-            let p = path_opt.unwrap();
+            let p = path_opt.ok_or_else(|| RuntimedError::ModelNotFound(name.to_string()))?;
             self.admit(name, &p)?;
             let is_safetensors = p.extension().map(|e| e.eq_ignore_ascii_case("safetensors")).unwrap_or(false);
             if is_safetensors {
@@ -141,5 +141,29 @@ impl ModelManager {
             lock.insert(canonical.to_string(), entry);
         }
         Ok(meta)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_model_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let mgr = ModelManager::new(tmp.path());
+        let res = mgr.load_model("nonexistent_model", None);
+        assert!(matches!(res, Err(RuntimedError::ModelNotFound(_))));
+    }
+
+    #[test]
+    fn test_load_model_invalid_backend() {
+        let tmp = TempDir::new().unwrap();
+        let model_path = tmp.path().join("test_model.gguf");
+        std::fs::write(&model_path, b"dummy").unwrap();
+        let mgr = ModelManager::new(tmp.path());
+        let res = mgr.load_model("test_model", Some("invalid_accel"));
+        assert!(matches!(res, Err(RuntimedError::HardwareAllocation(_))));
     }
 }

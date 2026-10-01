@@ -12,20 +12,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> /run (if /run/syntrop exists) -> temp_dir().
-fn resolve_runtime_dir() -> PathBuf {
+async fn resolve_runtime_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         let p = PathBuf::from(xdg.trim());
-        if !p.as_os_str().is_empty() && p.exists() {
+        if !p.as_os_str().is_empty() && tokio::fs::try_exists(&p).await.unwrap_or(false) {
             return p;
         }
     }
     let uid = rustix::process::getuid().as_raw();
     let run_user = PathBuf::from(format!("/run/user/{uid}"));
-    if run_user.exists() {
+    if tokio::fs::try_exists(&run_user).await.unwrap_or(false) {
         return run_user;
     }
     let run_syntrop = PathBuf::from("/run/syntrop");
-    if run_syntrop.exists() {
+    if tokio::fs::try_exists(&run_syntrop).await.unwrap_or(false) {
         return PathBuf::from("/run");
     }
     std::env::temp_dir()
@@ -119,8 +119,8 @@ pub async fn handle_generate_visual(
     };
 
     // Atomic write to $RUNTIME_DIR/syntrop/visual_gen/{id}.png
-    let out_dir = resolve_runtime_dir().join("syntrop").join("visual_gen");
-    if let Err(e) = std::fs::create_dir_all(&out_dir) {
+    let out_dir = resolve_runtime_dir().await.join("syntrop").join("visual_gen");
+    if let Err(e) = tokio::fs::create_dir_all(&out_dir).await {
         return VarlinkReply::err(
             "io.syntrop.Runtime1.GenerationFailed",
             Some(json!({ "reason": format!("failed to create output dir: {e}") })),
@@ -129,7 +129,7 @@ pub async fn handle_generate_visual(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&out_dir, std::fs::Permissions::from_mode(0o775));
+        let _ = tokio::fs::set_permissions(&out_dir, std::fs::Permissions::from_mode(0o775)).await;
     }
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -142,7 +142,7 @@ pub async fn handle_generate_visual(
     let final_path = out_dir.join(format!("{id}.png"));
     let tmp_path = out_dir.join(format!(".{id}.tmp"));
 
-    if let Err(e) = std::fs::write(&tmp_path, &png_bytes) {
+    if let Err(e) = tokio::fs::write(&tmp_path, &png_bytes).await {
         return VarlinkReply::err(
             "io.syntrop.Runtime1.GenerationFailed",
             Some(json!({ "reason": format!("failed to write temporary visual file: {e}") })),
@@ -151,10 +151,10 @@ pub async fn handle_generate_visual(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644));
+        let _ = tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644)).await;
     }
-    if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
-        let _ = std::fs::remove_file(&tmp_path);
+    if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
         return VarlinkReply::err(
             "io.syntrop.Runtime1.GenerationFailed",
             Some(json!({ "reason": format!("failed to commit visual file: {e}") })),
@@ -190,8 +190,8 @@ mod tests {
         assert_eq!(res["format"], "png");
         assert!(res["bytes"].as_u64().unwrap() > 0);
         let path_str = res["image_path"].as_str().unwrap();
-        assert!(std::path::Path::new(path_str).exists());
-        let _ = std::fs::remove_file(path_str);
+        assert!(tokio::fs::try_exists(path_str).await.unwrap_or(false));
+        let _ = tokio::fs::remove_file(path_str).await;
     }
 
     #[tokio::test]
@@ -220,6 +220,6 @@ mod tests {
         assert!(ok_reply.error.is_none());
         let res = ok_reply.parameters.unwrap();
         let path_str = res["image_path"].as_str().unwrap();
-        let _ = std::fs::remove_file(path_str);
+        let _ = tokio::fs::remove_file(path_str).await;
     }
 }

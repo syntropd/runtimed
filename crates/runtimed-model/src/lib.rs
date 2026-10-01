@@ -31,13 +31,13 @@ pub use cache::{
 };
 pub use config::{Activation, Arch, ArchConfig, LayerConfig};
 pub use decode::generate::generate;
-pub use decode::session::Session;
+pub use decode::{HeterogeneousDraftSession, Session};
 pub use error::{ModelError, Result};
 pub use lora::LoraAdapter;
 pub use pipeline::{forward_pipeline, PipelineStage};
 pub use sampler::{
-    sample_with_grammar, FsmGrammar, FsmState, GrammarTransition, JsonFsm, LogitMask, RegexFsm,
-    VarlinkFsm, VocabTrie,
+    get_or_create_shared_vocab_trie, sample_with_grammar, FsmGrammar, FsmState, GrammarTransition,
+    JsonFsm, LogitMask, RegexFsm, VarlinkFsm, VocabTrie,
 };
 pub use tokenizer::EngineTokenizer;
 pub use tp::{ring_all_reduce, ColumnParallelLinear, RingReducer, RowParallelLinear};

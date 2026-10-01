@@ -241,7 +241,8 @@ def is_shim(path):
         return False
 import subprocess
 rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
-dirty = bool(subprocess.run(["git", "status", "--short"], capture_output=True, text=True).stdout.strip())
+status_out = subprocess.run(["git", "status", "--short"], capture_output=True, text=True).stdout
+dirty = any(not line.strip().endswith("page-score.json") for line in status_out.splitlines() if line.strip())
 repo = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip().rstrip("/").rsplit("/", 1)[-1]
 pages = []
 with open(f"{tmp}/pages.txt") as f:

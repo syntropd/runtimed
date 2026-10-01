@@ -76,21 +76,14 @@ fn text_prompt_ids(
 }
 
 pub(crate) fn generate<M: TextModel>(
-    model: &mut M,
-    prompt: &[u32],
-    eos: &[u32],
-    max_new: usize,
+    model: &mut M, prompt: &[u32], eos: &[u32], max_new: usize, ctrl: &mut DualWatermarkController,
     next: impl FnMut(&candle_core::Tensor) -> runtimed_model::Result<u32>,
 ) -> runtimed_model::Result<Vec<u32>> {
     if max_new == 0 { return Ok(Vec::new()); }
     model.reset();
     let logits = model.forward(prompt, 0)?;
-    let mut ctrl = DualWatermarkController::new();
     let (spiller, mut cache) = (SpillManager::new(10), PagedKvCache::new(1));
-    decode_loop_managed(
-        model, &logits, prompt.len(), eos, max_new, next,
-        &mut ctrl, &spiller, &mut cache, DEFAULT_CHECK_INTERVAL,
-    )
+    decode_loop_managed(model, &logits, prompt.len(), eos, max_new, next, ctrl, &spiller, &mut cache, DEFAULT_CHECK_INTERVAL)
 }
 
 fn generate_guided_tokens(
@@ -102,11 +95,12 @@ fn generate_guided_tokens(
     mut rng: Rng,
 ) -> Result<Vec<u32>, RuntimedError> {
     use runtimed_model::sampler::*;
-    let trie = VocabTrie::from_tokenizer(&entry.tokenizer);
+    let trie = &entry.vocab_trie;
+    let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
     let (t, k, p) = (req.temperature, req.top_k, req.top_p);
     let mut step = |g: &dyn FsmGrammar, st: &mut FsmState| {
-        generate(session, prompt_ids, &entry.eos, budget, |l| {
-            sample_with_grammar(l, g, st, &trie, &entry.eos, t, k, p, || rng.next_f32())
+        generate(session, prompt_ids, &entry.eos, budget, &mut *ctrl, |l| {
+            sample_with_grammar(l, g, st, trie, &entry.eos, t, k, p, || rng.next_f32())
         }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
     };
     match req.grammar_type.as_deref().unwrap_or("json") {
@@ -121,10 +115,7 @@ fn generate_guided_tokens(
 
 /// Helper checking if tokenizer encodes `</think>` to exactly 1 token.
 pub fn is_thinking_model(tokenizer: &EngineTokenizer) -> bool {
-    tokenizer
-        .encode("</think>", false)
-        .map(|toks| toks.len() == 1)
-        .unwrap_or(false)
+    tokenizer.encode("</think>", false).map(|toks| toks.len() == 1).unwrap_or(false)
 }
 
 fn generate_with_budget(
@@ -151,7 +142,8 @@ fn generate_with_budget(
     if let Ok(toks) = entry.tokenizer.encode("<think>", false) {
         if toks.len() == 1 { tb.set_think_token_id(toks[0]); }
     }
-    generate(session, prompt_ids, &entry.eos, budget, |logits| {
+    let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
+    generate(session, prompt_ids, &entry.eos, budget, &mut *ctrl, |logits| {
         let mut row = logits.to_vec1::<f32>()?;
         tb.enforce_logits(&mut row);
         let masked = candle_core::Tensor::from_vec(row, logits.shape(), logits.device())?;
@@ -216,7 +208,8 @@ pub fn generate_tokens(
     } else if is_budgeted {
         generate_with_budget(&mut session, entry, &prompt_ids, budget, rb, request, rng)?
     } else {
-        generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
+        let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
+        generate(&mut *session, &prompt_ids, &entry.eos, budget, &mut *ctrl, |logits| {
             sample::sample(logits, request.temperature, request.top_k, request.top_p, || rng.next_f32())
         }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
     };

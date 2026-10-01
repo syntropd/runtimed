@@ -1,9 +1,4 @@
-//! Gemma4 decoder, faithful to the reference graph.
-//!
-//! Per layer: post-normed attention residual, post-normed GeGLU residual,
-//! per-layer-embedding injection, scalar rescale. Layers past the KV
-//! boundary reuse the last KV-owning layer's full cache; global layers
-//! rotate only the first quarter of each head (proportional RoPE).
+//! Gemma4 decoder with proportional RoPE and per-layer embedding injection.
 
 use crate::config::ArchConfig;
 use crate::error::{ModelError, Result};
@@ -58,15 +53,37 @@ impl Cache {
         }
         Ok(())
     }
+
+    /// Spill up to `max_layers` resident accelerator KV layers to host CPU RAM.
+    pub fn spill_layers(&mut self, max_layers: usize) -> Result<usize> {
+        let mut n = 0;
+        for (k, v) in self.layers.iter_mut().flatten() {
+            if n >= max_layers { break; }
+            if !matches!(k.device(), candle_core::Device::Cpu) {
+                *k = k.to_device(&candle_core::Device::Cpu)?;
+                *v = v.to_device(&candle_core::Device::Cpu)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    /// Prefetch up to `max_layers` spilled CPU KV layers back to compute device.
+    pub fn prefetch_layers(&mut self, dev: &candle_core::Device, max_layers: usize) -> Result<usize> {
+        let mut n = 0;
+        for (k, v) in self.layers.iter_mut().flatten() {
+            if n >= max_layers { break; }
+            if matches!(k.device(), candle_core::Device::Cpu) && !matches!(dev, candle_core::Device::Cpu) {
+                *k = k.to_device(dev)?;
+                *v = v.to_device(dev)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
 }
 
-/// Per-layer inputs `[1, seq, n_layer, ple]`: token identity plus a
-/// normalized projection of the main embeddings, averaged by 1/sqrt(2).
-///
-/// The two terms take separate inputs because multimodal batches split
-/// them: the reference looks token identity up from pad ids at image
-/// positions (its embedding batches carry no token ids) while projecting
-/// the real scattered embeddings for the context term.
+/// Per-layer inputs `[1, seq, n_layer, ple]`: token identity plus projection.
 pub(crate) fn per_layer_inputs(
     cfg: &ArchConfig,
     w: &Weights,
@@ -123,14 +140,20 @@ fn layer(
         let v = w.linear(&n, &format!("{pre}.attn_v.weight"))?;
         let v = ops::rms_norm_plain(&split(v)?, cfg.eps)?;
         match cache.layers[i].take() {
-            Some((pk, pv)) => (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?),
+            Some((pk, pv)) => {
+                let pk = if pk.device().same_device(dev) { pk } else { pk.to_device(dev)? };
+                let pv = if pv.device().same_device(dev) { pv } else { pv.to_device(dev)? };
+                (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?)
+            }
             None => (k, v),
         }
     } else {
-        // Shared layers read the source layer's already-updated cache.
-        cache.layers[lc.kv_source].clone().ok_or_else(|| {
+        let (sk, sv) = cache.layers[lc.kv_source].clone().ok_or_else(|| {
             ModelError::Config(format!("layer {i}: KV source cache empty"))
-        })?
+        })?;
+        let sk = if sk.device().same_device(dev) { sk } else { sk.to_device(dev)? };
+        let sv = if sv.device().same_device(dev) { sv } else { sv.to_device(dev)? };
+        (sk, sv)
     };
     let total = k_full.dim(2)?;
     let window = lc.is_swa.then(|| cfg.sliding_window).flatten();
@@ -149,16 +172,12 @@ fn layer(
     let n = ops::rms_norm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
     let g = w.linear(&n, &format!("{pre}.ffn_gate.weight"))?;
     let u = w.linear(&n, &format!("{pre}.ffn_up.weight"))?;
-    let mlp = w.linear(
-        &ops::gelu_tanh(&g)?.broadcast_mul(&u)?,
-        &format!("{pre}.ffn_down.weight"),
-    )?;
+    let mlp = w.linear(&ops::gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))?;
     let mlp = ops::rms_norm(&mlp, &w.get(&format!("{pre}.post_ffw_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&mlp)?;
 
     // Per-layer embedding injection.
-    let gate = w.linear(&h, &format!("{pre}.inp_gate.weight"))?;
-    let gate = ops::gelu_tanh(&gate)?;
+    let gate = ops::gelu_tanh(&w.linear(&h, &format!("{pre}.inp_gate.weight"))?)?;
     let pli = ple.narrow(2, i, 1)?.squeeze(2)?;
     let inj = w.linear(&gate.broadcast_mul(&pli)?, &format!("{pre}.proj.weight"))?;
     let inj = ops::rms_norm(&inj, &w.get(&format!("{pre}.post_norm.weight"))?, cfg.eps)?;
@@ -168,21 +187,12 @@ fn layer(
     Ok(h.broadcast_mul(&w.get(&format!("{pre}.layer_output_scale.weight"))?)?)
 }
 
-/// Input embeddings + per-layer inputs for `ids` (the text path's first
-/// half). Multimodal callers scatter soft tokens into `embeds` before
-/// running the layers.
 /// Scaled token embeddings (text path's first step, shared by MM).
 pub fn input_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<Tensor> {
-    Ok(w
-        .embed("token_embd.weight", ids)?
-        .affine(cfg.embed_scale as f64, 0.0)?)
+    Ok(w.embed("token_embd.weight", ids)?.affine(cfg.embed_scale as f64, 0.0)?)
 }
 
-pub fn forward_embeds(
-    cfg: &ArchConfig,
-    w: &Weights,
-    ids: &[u32],
-) -> Result<(Tensor, Tensor)> {
+pub fn forward_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<(Tensor, Tensor)> {
     let embeds = input_embeds(cfg, w, ids)?;
     let ple = per_layer_inputs(cfg, w, ids, &embeds)?;
     Ok((embeds, ple))
@@ -190,12 +200,7 @@ pub fn forward_embeds(
 
 /// Logits from ready-made embeddings (text path's second half).
 pub fn forward_from_embeds(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    embeds: &Tensor,
-    ple: &Tensor,
-    q0: usize,
+    cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
 ) -> Result<Tensor> {
     let mut h = embeds.clone();
     for i in 0..cfg.n_layer {
@@ -212,11 +217,7 @@ pub fn forward_from_embeds(
 
 /// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
 pub fn forward(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    ids: &[u32],
-    q0: usize,
+    cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize,
 ) -> Result<Tensor> {
     let (embeds, ple) = forward_embeds(cfg, w, ids)?;
     forward_from_embeds(cfg, w, cache, &embeds, &ple, q0)

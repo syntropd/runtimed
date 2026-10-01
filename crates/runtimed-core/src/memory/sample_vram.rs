@@ -80,8 +80,8 @@ pub fn evaluate_and_spill_with_metrics(
     let decision = controller.evaluate(vram_used, vram_total, now);
     match &decision {
         WatermarkDecision::Spill { bytes_to_evict, .. } => {
-            let block_bytes = cache.blocks.first().map(|b| (b.k.elem_count() + b.v.elem_count()) * b.k.dtype().size_in_bytes()).unwrap_or(1024 * 1024);
-            let count = if block_bytes > 0 { ((*bytes_to_evict as usize) / block_bytes).max(1) } else { 1 };
+            let bb = cache.blocks.first().map(|b| (b.k.elem_count() + b.v.elem_count()) * b.k.dtype().size_in_bytes()).unwrap_or(1024 * 1024);
+            let count = if bb > 0 { ((*bytes_to_evict as usize) / bb).max(1) } else { 1 };
             let spilled = spiller.spill_blocks(cache, count).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
             warn!(spilled, bytes_to_evict, "High watermark exceeded: spilled L1 blocks to L2 host RAM");
         }
@@ -125,10 +125,21 @@ pub fn decode_loop_managed<M: TextModel>(
     let mut pos = prompt_len;
     let mut step = 0usize;
 
-    if check_interval > 0 {
-        if let Err(e) = evaluate_and_spill(controller, spiller, cache, Instant::now()) {
-            warn!("Initial watermark evaluation error: {e}");
+    let eval_step = |ctrl: &mut DualWatermarkController, mdl: &mut M, c: &mut PagedKvCache| {
+        match evaluate_and_spill(ctrl, spiller, c, Instant::now()) {
+            Ok(WatermarkDecision::Spill { .. }) => {
+                let _ = mdl.spill_layers(1);
+            }
+            Ok(WatermarkDecision::Prefetch { .. }) => {
+                let _ = mdl.prefetch_layers(1);
+            }
+            Err(e) => warn!("Watermark evaluation error: {e}"),
+            _ => {}
         }
+    };
+
+    if check_interval > 0 {
+        eval_step(controller, model, cache);
     }
 
     loop {
@@ -139,9 +150,7 @@ pub fn decode_loop_managed<M: TextModel>(
 
         step += 1;
         if check_interval > 0 && step % check_interval == 0 {
-            if let Err(e) = evaluate_and_spill(controller, spiller, cache, Instant::now()) {
-                warn!("Watermark evaluation error during decode step {step}: {e}");
-            }
+            eval_step(controller, model, cache);
         }
 
         let logits = model.forward(std::slice::from_ref(&id), pos)?;
@@ -236,10 +245,7 @@ mod tests {
 
         let out = decode_loop_managed(
             &mut model, &first_logits, 1, &[3], 4,
-            |logits| {
-                let v = logits.to_vec1::<f32>()?;
-                Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
-            },
+            |l| Ok(l.to_vec1::<f32>()?.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32),
             &mut ctrl, &spiller, &mut cache, 1,
         ).unwrap();
         assert_eq!(out.len(), 4);

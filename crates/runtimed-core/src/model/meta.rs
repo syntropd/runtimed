@@ -4,10 +4,11 @@
 //! these types describe one entry.
 
 use super::tokenizer::EngineTokenizer;
+use crate::memory::DualWatermarkController;
 use runtimed_gguf::{GgufFile, MetaValue};
-use runtimed_model::{Session, VisionTower};
+use runtimed_model::{Session, VisionTower, VocabTrie};
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Metadata for an active model loaded into memory or compute device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +38,10 @@ pub struct EngineEntry {
     pub vision: RwLock<Option<VisionTower>>,
     /// L2 host prefix cache for projected soft tokens and KV layers.
     pub image_cache: RwLock<runtimed_model::cache::image_cache::ImageCache>,
+    /// Shared vocabulary prefix trie pooled across family models.
+    pub vocab_trie: Arc<VocabTrie>,
+    /// Persisted dual watermark controller for VRAM/system pressure management.
+    pub watermark_controller: Mutex<DualWatermarkController>,
 }
 
 /// Numeric GGUF metadata that may sit in a U32/U64/I32 slot.

@@ -120,12 +120,14 @@ impl TextModel for TestManagedModel {
 #[test]
 fn test_generate_managed_execution() {
     let mut model = TestManagedModel { vocab: 6, id: 3, reset_count: 0 };
+    let mut ctrl = DualWatermarkController::new();
     let out = generate(
         &mut model,
         &[1, 2],
         &[5],
         4,
-        |logits| {
+        &mut ctrl,
+        |logits: &candle_core::Tensor| {
             let v = logits.to_vec1::<f32>()?;
             Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
         },
@@ -137,12 +139,14 @@ fn test_generate_managed_execution() {
 #[test]
 fn test_generate_managed_early_eos() {
     let mut model = TestManagedModel { vocab: 6, id: 4, reset_count: 0 };
+    let mut ctrl = DualWatermarkController::new();
     let out = generate(
         &mut model,
         &[1],
         &[4],
         8,
-        |logits| {
+        &mut ctrl,
+        |logits: &candle_core::Tensor| {
             let v = logits.to_vec1::<f32>()?;
             Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
         },
@@ -153,12 +157,14 @@ fn test_generate_managed_early_eos() {
 #[test]
 fn test_generate_managed_zero_budget() {
     let mut model = TestManagedModel { vocab: 6, id: 2, reset_count: 0 };
+    let mut ctrl = DualWatermarkController::new();
     let out = generate(
         &mut model,
         &[1],
         &[5],
         0,
-        |_| Ok(2),
+        &mut ctrl,
+        |_: &candle_core::Tensor| Ok(2),
     ).unwrap();
     assert!(out.is_empty());
     assert_eq!(model.reset_count, 0);
@@ -167,12 +173,14 @@ fn test_generate_managed_zero_budget() {
 #[test]
 fn test_generate_managed_empty_prompt() {
     let mut model = TestManagedModel { vocab: 6, id: 1, reset_count: 0 };
+    let mut ctrl = DualWatermarkController::new();
     let out = generate(
         &mut model,
         &[],
         &[5],
         2,
-        |logits| {
+        &mut ctrl,
+        |logits: &candle_core::Tensor| {
             let v = logits.to_vec1::<f32>()?;
             Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
         },

@@ -60,21 +60,10 @@ impl Session {
                 let sibling = weights_path.with_extension("config.json");
                 if sibling.exists() {
                     ArchConfig::from_hf_file(&sibling)?
-                } else if let Some(parent) = weights_path.parent() {
-                    let parent_cfg = parent.join("config.json");
-                    if parent_cfg.exists() {
-                        ArchConfig::from_hf_file(&parent_cfg)?
-                    } else {
-                        return Err(ModelError::Config(format!(
-                            "missing config.json for {}",
-                            weights_path.display()
-                        )));
-                    }
+                } else if let Some(parent_cfg) = weights_path.parent().map(|p| p.join("config.json")).filter(|p| p.exists()) {
+                    ArchConfig::from_hf_file(&parent_cfg)?
                 } else {
-                    return Err(ModelError::Config(format!(
-                        "missing config.json for {}",
-                        weights_path.display()
-                    )));
+                    return Err(ModelError::Config(format!("missing config.json for {}", weights_path.display())));
                 }
             }
         };
@@ -120,6 +109,23 @@ impl Session {
         match &mut self.kind {
             Kind::Qwen2(c) => c.truncate(target_len),
             Kind::Gemma4(c) => c.truncate(target_len),
+        }
+    }
+
+    /// Spill up to `count` resident accelerator KV layers to host CPU RAM.
+    pub fn spill_layers(&mut self, count: usize) -> Result<usize> {
+        match &mut self.kind {
+            Kind::Qwen2(c) => c.spill_layers(count),
+            Kind::Gemma4(c) => c.spill_layers(count),
+        }
+    }
+
+    /// Prefetch up to `count` spilled CPU KV layers back to target compute device.
+    pub fn prefetch_layers(&mut self, count: usize) -> Result<usize> {
+        let dev = self.device().clone();
+        match &mut self.kind {
+            Kind::Qwen2(c) => c.prefetch_layers(&dev, count),
+            Kind::Gemma4(c) => c.prefetch_layers(&dev, count),
         }
     }
 

@@ -14,4 +14,4 @@ pub use mask_logits::{LogitMask, LogitMaskCache};
 pub use regex_fsm::{ByteTransition, RegexFsm, RegexNode};
 pub use sample_fsm::sample_with_grammar;
 pub use varlink_fsm::VarlinkFsm;
-pub use vocab_trie::{TrieNode, VocabTrie};
+pub use vocab_trie::{get_or_create_shared_vocab_trie, TrieNode, VocabTrie};

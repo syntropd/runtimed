@@ -12,13 +12,21 @@ pub fn greedy(logits: &Tensor) -> Result<u32> {
     Ok(id)
 }
 
-/// Temperature + top-k + top-p sampling over a `[vocab]` row.
-/// `temperature <= 0` means greedy. `rand01` supplies uniform draws.
-pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, mut rand01: impl FnMut() -> f32) -> Result<u32> {
-    if temperature <= 0.0 {
-        return greedy(logits);
-    }
+/// Compute normalized probabilities over a `[vocab]` logit row.
+/// When `temperature <= 0.0`, returns a 1-hot probability vector at the greedy argmax.
+pub fn probs(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32) -> Result<Vec<f32>> {
     let mut v = logits.to_vec1::<f32>()?;
+    if v.is_empty() {
+        return Ok(Vec::new());
+    }
+    if temperature <= 0.0 {
+        let best_idx = logits.argmax(0)?.to_scalar::<u32>()? as usize;
+        let mut p = vec![0.0f32; v.len()];
+        if best_idx < p.len() {
+            p[best_idx] = 1.0;
+        }
+        return Ok(p);
+    }
     for x in v.iter_mut() {
         *x /= temperature;
     }
@@ -32,12 +40,13 @@ pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, mut r
             }
         }
     }
-    // Softmax, then nucleus truncation.
     let max = v.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
     let mut p: Vec<f32> = v.iter().map(|x| (x - max).exp()).collect();
     let sum: f32 = p.iter().sum();
-    for x in p.iter_mut() {
-        *x /= sum;
+    if sum > 0.0 {
+        for x in p.iter_mut() {
+            *x /= sum;
+        }
     }
     if top_p < 1.0 {
         let mut idx: Vec<usize> = (0..v.len()).collect();
@@ -59,9 +68,19 @@ pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, mut r
                 renorm += *x;
             }
         }
-        for x in p.iter_mut() {
-            *x /= renorm;
+        if renorm > 0.0 {
+            for x in p.iter_mut() {
+                *x /= renorm;
+            }
         }
+    }
+    Ok(p)
+}
+
+/// Sample an index from a normalized probability vector.
+pub fn sample_from_probs(p: &[f32], mut rand01: impl FnMut() -> f32) -> u32 {
+    if p.is_empty() {
+        return 0;
     }
     let mut r = rand01() % 1.0;
     if r < 0.0 {
@@ -71,10 +90,20 @@ pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, mut r
     for (i, &x) in p.iter().enumerate() {
         acc += x;
         if r < acc {
-            return Ok(i as u32);
+            return i as u32;
         }
     }
-    Ok((v.len() - 1) as u32)
+    (p.len() - 1) as u32
+}
+
+/// Temperature + top-k + top-p sampling over a `[vocab]` row.
+/// `temperature <= 0` means greedy. `rand01` supplies uniform draws.
+pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, rand01: impl FnMut() -> f32) -> Result<u32> {
+    if temperature <= 0.0 {
+        return greedy(logits);
+    }
+    let p = probs(logits, temperature, top_k, top_p)?;
+    Ok(sample_from_probs(&p, rand01))
 }
 
 #[cfg(test)]

@@ -10,6 +10,8 @@ use candle_core::Tensor;
 pub trait TextModel {
     fn forward(&mut self, ids: &[u32], q0: usize) -> Result<Tensor>;
     fn reset(&mut self);
+    fn spill_layers(&mut self, _count: usize) -> Result<usize> { Ok(0) }
+    fn prefetch_layers(&mut self, _count: usize) -> Result<usize> { Ok(0) }
 }
 
 impl TextModel for crate::decode::session::Session {
@@ -18,6 +20,12 @@ impl TextModel for crate::decode::session::Session {
     }
     fn reset(&mut self) {
         crate::decode::session::Session::reset(self)
+    }
+    fn spill_layers(&mut self, count: usize) -> Result<usize> {
+        self.spill_layers(count)
+    }
+    fn prefetch_layers(&mut self, count: usize) -> Result<usize> {
+        self.prefetch_layers(count)
     }
 }
 

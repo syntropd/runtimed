@@ -42,6 +42,34 @@ impl Cache {
             }
         }
     }
+
+    /// Spill up to `max_layers` resident accelerator KV layers to host CPU RAM.
+    pub fn spill_layers(&mut self, max_layers: usize) -> Result<usize> {
+        let mut n = 0;
+        for (k, v) in self.layers.iter_mut().flatten() {
+            if n >= max_layers { break; }
+            if !matches!(k.device(), candle_core::Device::Cpu) {
+                *k = k.to_device(&candle_core::Device::Cpu)?;
+                *v = v.to_device(&candle_core::Device::Cpu)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    /// Prefetch up to `max_layers` spilled CPU KV layers back to target compute device.
+    pub fn prefetch_layers(&mut self, dev: &candle_core::Device, max_layers: usize) -> Result<usize> {
+        let mut n = 0;
+        for (k, v) in self.layers.iter_mut().flatten() {
+            if n >= max_layers { break; }
+            if matches!(k.device(), candle_core::Device::Cpu) && !matches!(dev, candle_core::Device::Cpu) {
+                *k = k.to_device(dev)?;
+                *v = v.to_device(dev)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
 }
 
 fn layer(
@@ -74,7 +102,11 @@ fn layer(
     let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
     // Extend the KV cache and attend over all of it.
     let (k_full, v_full) = match cache.layers[i].take() {
-        Some((pk, pv)) => (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?),
+        Some((pk, pv)) => {
+            let pk = if pk.device().same_device(dev) { pk } else { pk.to_device(dev)? };
+            let pv = if pv.device().same_device(dev) { pv } else { pv.to_device(dev)? };
+            (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?)
+        }
         None => (k, v),
     };
     let total = k_full.dim(2)?;

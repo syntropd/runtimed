@@ -132,6 +132,10 @@ impl ModelManager {
             }
         };
 
+        let vocab_trie = runtimed_model::sampler::get_or_create_shared_vocab_trie(
+            &meta.architecture,
+            &tokenizer,
+        );
         let entry = Arc::new(EngineEntry {
             meta: meta.clone(),
             session: Mutex::new(session),
@@ -140,6 +144,8 @@ impl ModelManager {
             add_special,
             vision: RwLock::new(None),
             image_cache: RwLock::new(runtimed_model::cache::image_cache::ImageCache::new(16)),
+            vocab_trie,
+            watermark_controller: Mutex::new(crate::memory::DualWatermarkController::new()),
         });
         tracing::info!(model = %meta.name, backend = %meta.compute_backend, bytes = meta.memory_bytes, "load");
         lock.insert(name.to_string(), Arc::clone(&entry));

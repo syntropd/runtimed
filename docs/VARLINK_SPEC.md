@@ -26,7 +26,8 @@ type GenerationResult (
   duration_ms: int
 )
 
-method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string) -> (result: GenerationResult)
+method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, speculative_draft_model: ?string, reasoning_budget: ?int, reasoning_effort: ?string) -> (result: GenerationResult)
+method Decide(model: string, prompt: string, candidates: []Candidate, temperature: ?float) -> (result: DecisionResult)
 method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
 method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
 method GetLoad() -> (available_slots: int, max_slots: int, used_bytes: int, models: []LoadedModel)
@@ -56,6 +57,11 @@ Executes token generation for a prompt against the requested model.
   - `top_p` (float, optional): Nucleus truncation, 1.0 disables.
   - `seed` (int, optional): Sampling seed, 0 draws entropy from the clock.
   - `image` (string, optional): Base64-encoded PNG/JPEG for multimodal generation (needs `AttachVision` first; the prompt is wrapped in the chat template).
+  - `grammar_type` (string, optional): Optional grammar enforcement ("json" or "regex").
+  - `grammar` (string, optional): JSON schema or regex pattern.
+  - `speculative_draft_model` (string, optional): Optional draft model identifier for speculative decoding acceleration (e.g. `qwen2.5-0.5b`).
+  - `reasoning_budget` (int, optional): Thinking token budget cap.
+  - `reasoning_effort` (string, optional): Thinking effort tier ("none", "low", "medium", "high").
 - Returns:
   - `result` (`GenerationResult`): Text completion, token counts, and duration.
 
@@ -139,4 +145,91 @@ Executes 1-step visual generation into an atomically committed PNG file in runti
   - `width` (int): Result image width.
   - `height` (int): Result image height.
   - `format` (string): Image encoding format ("png").
+
+---
+
+# io.syntrop.Sensory1: Varlink Interface Specification
+
+The `io.syntrop.Sensory1` interface provides unprivileged environmental awareness, ambient sensing, audio capture with voice activity detection (VAD), video frame acquisition with silhouette detection, screen inspection, and composite operator presence estimation.
+
+Socket Endpoint: `/run/syntrop/io.syntrop.Sensory1`
+
+## 1. Interface Definition
+
+```varlink
+interface io.syntrop.Sensory1
+
+type AudioCaptureResult (
+  audio_base64: string,
+  sample_rate: int,
+  channels: int,
+  duration_ms: int,
+  vad_active: bool,
+  rms_db: float
+)
+
+type FrameCaptureResult (
+  image_base64: string,
+  format: string,
+  width: int,
+  height: int,
+  device: string,
+  silhouette_detected: bool,
+  patches_base64: ?string
+)
+
+type ScreenCaptureResult (
+  image_base64: string,
+  format: string,
+  width: int,
+  height: int
+)
+
+type OperatorPresence (
+  present: bool,
+  confidence: float,
+  audio_vad: bool,
+  video_motion: bool
+)
+
+method CaptureAudio(duration_ms: ?int) -> (result: AudioCaptureResult)
+method CaptureFrame(device: ?string, pool_patches: ?bool) -> (result: FrameCaptureResult)
+method CaptureScreen(display: ?string) -> (result: ScreenCaptureResult)
+method GetOperatorPresence() -> (presence: OperatorPresence)
+
+error DeviceUnavailable(device: string)
+error CaptureFailed(reason: string)
+error InvalidParameter(parameter: string)
+```
+
+## 2. Methods
+
+### 2.1 `CaptureAudio`
+Records ambient audio from default system audio source via PipeWire PCM ingest (`pw-record`) and evaluates energy threshold Voice Activity Detection (VAD).
+- Parameters:
+  - `duration_ms` (?int, optional): Duration in milliseconds (clamped between 50ms and 10,000ms, default 500ms).
+- Returns:
+  - `result` (`AudioCaptureResult`): Base64-encoded 16kHz mono S16LE PCM bytes, sample rate, channels, duration, VAD flag, and computed RMS dB.
+
+### 2.2 `CaptureFrame`
+Captures an RGB24 webcam frame via Linux V4L2 device, evaluates silhouette presence heuristic, and optionally performs spatial pooling via `pool_patches`.
+- Parameters:
+  - `device` (?string, optional): V4L2 video device path (default `/dev/video0`).
+  - `pool_patches` (?bool, optional): If true, runs 2x2 spatial patch pooling into normalized f32 embeddings.
+- Returns:
+  - `result` (`FrameCaptureResult`): PNG base64, format, width, height, device path, silhouette flag, and optional pooled patches base64.
+
+### 2.3 `CaptureScreen`
+Captures display desktop screen buffer or synthetic canvas fallback into PNG base64 via unprivileged Wayland portal / KMS dumb buffer detection.
+- Parameters:
+  - `display` (?string, optional): Display identifier (e.g. `:0`, `wayland-0`).
+- Returns:
+  - `result` (`ScreenCaptureResult`): PNG base64, format, width (1280), height (720).
+
+### 2.4 `GetOperatorPresence`
+Fuses microphone audio VAD energy and webcam frame silhouette variance into a unified presence probability and confidence estimate.
+- Parameters: none.
+- Returns:
+  - `presence` (`OperatorPresence`): Composite `present` boolean, confidence score (0.0–1.0), audio VAD active flag, and video motion / silhouette flag.
+
 

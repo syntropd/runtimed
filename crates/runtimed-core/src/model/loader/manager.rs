@@ -155,4 +155,12 @@ impl ModelManager {
     pub(super) fn write_lock(&self) -> Result<RwLockWriteGuard<'_, HashMap<String, Arc<EngineEntry>>>, RuntimedError> {
         self.active_models.write().map_err(|_| RuntimedError::GenerationFailed("lock poisoned".into()))
     }
+
+    /// Injects an active model entry directly (used for testing and test harnesses).
+    #[cfg(any(test, feature = "qa-test-helpers"))]
+    pub fn insert_entry(&self, name: String, entry: Arc<EngineEntry>) {
+        if let Ok(mut lock) = self.write_lock() {
+            lock.insert(name, entry);
+        }
+    }
 }

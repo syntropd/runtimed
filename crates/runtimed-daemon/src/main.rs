@@ -74,6 +74,16 @@ async fn main() -> Result<()> {
         None => bind_standalone(&socket_path)?,
     };
 
+    let sensory_path = socket_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("/run/syntrop"))
+        .join("io.syntrop.Sensory1");
+    if sensory_path != socket_path && !sensory_path.exists() {
+        if let Some(target) = socket_path.file_name() {
+            let _ = std::os::unix::fs::symlink(target, &sensory_path);
+        }
+    }
+
     let trusted_name = std::env::var("RUNTIMED_TRUSTED_GROUP")
         .unwrap_or_else(|_| DEFAULT_TRUSTED_GROUP.to_string());
     let resolved_gid = lookup_group(&trusted_name);

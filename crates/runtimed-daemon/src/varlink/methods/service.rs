@@ -51,7 +51,7 @@ type DecisionResult (
   candidates: []ScoredCandidate
 )
 
-method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, reasoning_budget: ?int, reasoning_effort: ?string) -> (result: GenerationResult)
+method Generate(model: string, prompt: string, max_tokens: int, temperature: float, top_k: int, top_p: float, seed: int, image: ?string, grammar_type: ?string, grammar: ?string, speculative_draft_model: ?string, reasoning_budget: ?int, reasoning_effort: ?string) -> (result: GenerationResult)
 method Decide(model: string, prompt: string, candidates: []Candidate, temperature: ?float) -> (result: DecisionResult)
 method AttachVision(model: string, mmproj: string) -> (model: LoadedModel)
 method AttachLora(model: string, lora: string) -> (fused_tensors: []string)
@@ -82,7 +82,8 @@ pub fn handle_service_call(method: &str, params: Option<&serde_json::Value>) -> 
             "url": "https://github.com/syntropd/runtimed",
             "interfaces": [
                 "org.varlink.service",
-                "io.syntrop.Runtime1"
+                "io.syntrop.Runtime1",
+                "io.syntrop.Sensory1"
             ]
         }))),
         "org.varlink.service.GetInterfaceDescription" => {
@@ -94,6 +95,9 @@ pub fn handle_service_call(method: &str, params: Option<&serde_json::Value>) -> 
             match iface {
                 "io.syntrop.Runtime1" => Some(VarlinkReply::ok(json!({
                     "description": IO_SYNTROP_RUNTIME1_INTERFACE.trim()
+                }))),
+                "io.syntrop.Sensory1" => Some(VarlinkReply::ok(json!({
+                    "description": crate::varlink::sensory::IO_SYNTROP_SENSORY1_INTERFACE.trim()
                 }))),
                 _ => Some(VarlinkReply::err(
                     "org.varlink.service.InterfaceNotFound",

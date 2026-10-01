@@ -41,6 +41,7 @@ ReadWritePaths=/var/lib/models /run/syntrop
 DeviceAllow=char-nvidia* rw
 DeviceAllow=char-drm rw
 DeviceAllow=char-accel rw
+DeviceAllow=char-video4linux rw
 
 # Resource limits: the 5B engine holds ~21G F32 on CPU at load peak, so
 # the ceiling must clear it (smaller brains never approach these).

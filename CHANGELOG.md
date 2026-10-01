@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.14 (2026-10-01) — Speculative Decoding Daemon Wiring & Environmental Sensory Awareness
+
+- **Speculative Draft Model Wiring**: Exposed `speculative_draft_model: ?string` in `io.syntrop.Runtime1.Generate` Varlink interface. In `handle_generate`, dynamically load the draft model into resident memory and call `generate_speculative(&entry, &draft, &req, k_draft)` for accelerated token production.
+- **io.syntrop.Sensory1 Varlink Interface**: Exposed `/run/syntrop/io.syntrop.Sensory1` with full Varlink introspection and methods `CaptureAudio`, `CaptureFrame`, `CaptureScreen`, and `GetOperatorPresence`.
+- **Sensory Ingest Pipelines**:
+  - `CaptureAudio`: PipeWire / pure-Rust PCM audio ingest with RMS dB energy threshold Voice Activity Detection (VAD).
+  - `CaptureFrame`: Linux V4L2 RGB24 webcam capture with silhouette presence heuristic, integrating `pool_patches` spatial pooling and `ImageCache`.
+  - `CaptureScreen`: Display desktop screen buffer inspection with Wayland/KMS dumb buffer detection and fallback.
+  - `GetOperatorPresence`: Fused microphone audio VAD energy and webcam frame silhouette variance into composite operator presence probability and confidence estimation.
+
 ## 0.5.7 (2026-09-30) — Async Audio Streaming, Atomic Visuals & Neural Weights
 
 - **Async Non-blocking Audio I/O**: Refactored `PcmSink` to async trait methods (`write_pcm`, `write_bytes`, `flush`) and `PwCatSink` to `tokio::process::Command` with `kill_on_drop(true)` and non-blocking asynchronous `finish()` drain. `KokoroEngine::synthesize` is generic async over `<S: PcmSink + ?Sized>`.

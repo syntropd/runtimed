@@ -41,6 +41,10 @@ pub enum RuntimedError {
     /// Standard I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Sensory input capture failure.
+    #[error("Sensory capture failure: {0}")]
+    SensoryCapture(String),
 }
 
 pub type Result<T> = std::result::Result<T, RuntimedError>;

@@ -52,4 +52,24 @@ impl Runtime1Handler {
         let models = self.model_manager.list_active();
         VarlinkReply::ok(json!({ "models": models }))
     }
+
+    pub(super) async fn handle_embed(&self, params: Option<&Value>) -> VarlinkReply {
+        let _permit = match self.acquire_permit() {
+            Ok(p) => p,
+            Err(r) => return r,
+        };
+
+        let text = match params.and_then(|p| p.get("text")).and_then(|t| t.as_str()) {
+            Some(t) => t,
+            None => {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.InvalidParameter",
+                    Some(json!({ "parameter": "text" })),
+                )
+            }
+        };
+
+        let embedding = runtimed_core::engine::generate_embedding(text);
+        VarlinkReply::ok(json!({ "embedding": embedding }))
+    }
 }

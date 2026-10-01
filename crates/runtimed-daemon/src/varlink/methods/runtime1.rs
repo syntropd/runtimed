@@ -1,7 +1,7 @@
 //! Handler implementation for io.syntrop.Runtime1 Varlink interface.
 
 use crate::varlink::server::protocol::VarlinkReply;
-use runtimed_core::engine::{generate_embedding, generate_tokens, GenerationRequest};
+use runtimed_core::engine::{generate_speculative, generate_tokens, GenerationRequest, ReasoningEffort};
 use runtimed_core::model::ModelManager;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -99,55 +99,18 @@ impl Runtime1Handler {
             }
         };
 
-        let max_tokens = params
-            .get("max_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(256) as usize;
-
-        let temperature = params
-            .get("temperature")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as f32;
-
-        let top_k = params
-            .get("top_k")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
-
-        let top_p = params
-            .get("top_p")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0) as f32;
-
-        let seed = params
-            .get("seed")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        let image_base64 = params
-            .get("image")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-
-        let grammar_type = params
-            .get("grammar_type")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-
-        let grammar = params
-            .get("grammar")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-
-        let reasoning_budget = params
-            .get("reasoning_budget")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
-
-        let reasoning_effort = params
-            .get("reasoning_effort")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse::<runtimed_core::engine::ReasoningEffort>().ok());
+        let max_tokens = params.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(256) as usize;
+        let temperature = params.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+        let top_k = params.get("top_k").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let top_p = params.get("top_p").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let seed = params.get("seed").and_then(|v| v.as_u64()).unwrap_or(0);
+        let image_base64 = params.get("image").and_then(|v| v.as_str()).map(str::to_string);
+        let grammar_type = params.get("grammar_type").and_then(|v| v.as_str()).map(str::to_string);
+        let grammar = params.get("grammar").and_then(|v| v.as_str()).map(str::to_string);
+        let reasoning_budget = params.get("reasoning_budget").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let reasoning_effort = params.get("reasoning_effort").and_then(|v| v.as_str()).and_then(|s| s.parse::<ReasoningEffort>().ok());
+        let speculative_draft_model = params.get("speculative_draft_model").and_then(|v| v.as_str()).map(str::to_string);
+        let k_draft = params.get("k_draft").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
 
         // Loading dequantizes gigabytes; keep it off the async executor.
         let manager = Arc::clone(&self.model_manager);
@@ -155,27 +118,30 @@ impl Runtime1Handler {
         let loaded = tokio::task::spawn_blocking(move || manager.load_model(&name_owned, None)).await;
         match loaded {
             Ok(Ok(_)) => {}
-            Ok(Err(e)) => {
-                return VarlinkReply::err(
-                    "io.syntrop.Runtime1.GenerationFailed",
-                    Some(json!({ "reason": e.to_string() })),
-                )
-            }
-            Err(e) => {
-                return VarlinkReply::err(
-                    "io.syntrop.Runtime1.GenerationFailed",
-                    Some(json!({ "reason": format!("loader failed: {e}") })),
-                )
-            }
+            Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e.to_string() }))),
+            Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("loader failed: {e}") }))),
         }
         let entry = match self.model_manager.get_entry(model_name) {
             Some(e) => e,
-            None => {
-                return VarlinkReply::err(
-                    "io.syntrop.Runtime1.GenerationFailed",
-                    Some(json!({ "reason": "model vanished after load" })),
-                )
+            None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "model vanished after load" }))),
+        };
+
+        let draft_entry = match speculative_draft_model {
+            Some(ref draft_name) => {
+                let manager = Arc::clone(&self.model_manager);
+                let draft_owned = draft_name.clone();
+                let loaded = tokio::task::spawn_blocking(move || manager.load_model(&draft_owned, None)).await;
+                match loaded {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft model load failed: {e}") }))),
+                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft loader failed: {e}") }))),
+                }
+                match self.model_manager.get_entry(draft_name) {
+                    Some(e) => Some(e),
+                    None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "draft model vanished after load" }))),
+                }
             }
+            None => None,
         };
 
         let effective_budget = reasoning_budget.or_else(|| {
@@ -199,15 +165,17 @@ impl Runtime1Handler {
 
         // Generation is synchronous CPU work; run it off the async executor.
         let entry_task = Arc::clone(&entry);
-        let output = tokio::task::spawn_blocking(move || generate_tokens(&entry_task, &request)).await;
+        let output = tokio::task::spawn_blocking(move || {
+            if let Some(draft) = draft_entry {
+                generate_speculative(&entry_task, &draft, &request, k_draft)
+            } else {
+                generate_tokens(&entry_task, &request)
+            }
+        }).await;
+
         let output = match output {
             Ok(o) => o,
-            Err(e) => {
-                return VarlinkReply::err(
-                    "io.syntrop.Runtime1.GenerationFailed",
-                    Some(json!({ "reason": format!("worker failed: {e}") })),
-                )
-            }
+            Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("worker failed: {e}") }))),
         };
         match output {
             Ok(result) => VarlinkReply::ok(json!({ "result": result })),
@@ -216,25 +184,5 @@ impl Runtime1Handler {
                 Some(json!({ "reason": e.to_string() })),
             ),
         }
-    }
-
-    async fn handle_embed(&self, params: Option<&Value>) -> VarlinkReply {
-        let _permit = match self.acquire_permit() {
-            Ok(p) => p,
-            Err(r) => return r,
-        };
-
-        let text = match params.and_then(|p| p.get("text")).and_then(|t| t.as_str()) {
-            Some(t) => t,
-            None => {
-                return VarlinkReply::err(
-                    "io.syntrop.Runtime1.InvalidParameter",
-                    Some(json!({ "parameter": "text" })),
-                )
-            }
-        };
-
-        let embedding = generate_embedding(text);
-        VarlinkReply::ok(json!({ "embedding": embedding }))
     }
 }

@@ -37,7 +37,12 @@ pub fn capture_video_frame(
 
     let rgb_data = match try_read_v4l2(dev_path, w, h) {
         Ok(data) => data,
-        Err(_) => generate_synthetic_rgb(w, h),
+        Err(e) => {
+            if device.is_some() {
+                return Err(e);
+            }
+            generate_synthetic_rgb(w, h)
+        }
     };
 
     let (variance, silhouette_detected) = analyze_silhouette(&rgb_data, w, h);
@@ -67,7 +72,7 @@ pub fn capture_video_frame(
 /// Attempts to read raw frame bytes from a Linux V4L2 device file.
 fn try_read_v4l2(dev_path: &str, width: u32, height: u32) -> Result<Vec<u8>> {
     if !Path::new(dev_path).exists() {
-        return Err(RuntimedError::SensoryCapture(format!("device {dev_path} not found")));
+        return Err(RuntimedError::DeviceNotFound(dev_path.to_string()));
     }
 
     let mut file = File::open(dev_path)?;
@@ -145,12 +150,18 @@ mod tests {
 
     #[test]
     fn test_capture_video_frame_fallback() {
-        let frame = capture_video_frame(Some("/dev/nonexistent_video"), Some(128), Some(128)).expect("frame");
+        let frame = capture_video_frame(None, Some(128), Some(128)).expect("frame");
         assert_eq!(frame.format, "png");
         assert_eq!(frame.width, 128);
         assert_eq!(frame.height, 128);
         assert!(!frame.image_base64.is_empty());
         assert!(frame.silhouette_detected);
+    }
+
+    #[test]
+    fn test_capture_video_frame_missing_device_errors() {
+        let err = capture_video_frame(Some("/dev/nonexistent_video_dev_xyz"), Some(128), Some(128)).unwrap_err();
+        assert!(matches!(err, RuntimedError::DeviceNotFound(_)));
     }
 
     #[test]

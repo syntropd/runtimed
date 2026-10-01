@@ -112,6 +112,15 @@ impl Runtime1Handler {
         let speculative_draft_model = params.get("speculative_draft_model").and_then(|v| v.as_str()).map(str::to_string);
         let k_draft = params.get("k_draft").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
 
+        if let Some(ref draft_name) = speculative_draft_model {
+            if draft_name == model_name {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.InvalidParameter",
+                    Some(json!({ "parameter": "speculative_draft_model" })),
+                );
+            }
+        }
+
         // Loading dequantizes gigabytes; keep it off the async executor.
         let manager = Arc::clone(&self.model_manager);
         let name_owned = model_name.to_string();
@@ -137,7 +146,15 @@ impl Runtime1Handler {
                     Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft loader failed: {e}") }))),
                 }
                 match self.model_manager.get_entry(draft_name) {
-                    Some(e) => Some(e),
+                    Some(e) => {
+                        if Arc::ptr_eq(&entry, &e) {
+                            return VarlinkReply::err(
+                                "io.syntrop.Runtime1.InvalidParameter",
+                                Some(json!({ "parameter": "speculative_draft_model" })),
+                            );
+                        }
+                        Some(e)
+                    }
                     None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "draft model vanished after load" }))),
                 }
             }

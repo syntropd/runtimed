@@ -99,26 +99,74 @@ async fn test_speculative_generation_wire_protocol_roundtrip() {
 }
 
 #[tokio::test]
-async fn test_gated_speculative_generation_succeeds_if_gguf_present() {
-    let Ok(gguf_var) = std::env::var("SYNTROP_TEST_GGUF") else {
-        return;
-    };
-    let gguf_path = std::path::PathBuf::from(gguf_var);
-    if !gguf_path.exists() {
-        return;
-    }
-
-    let dir = gguf_path.parent().expect("parent").to_path_buf();
-    let stem = gguf_path.file_stem().expect("stem").to_string_lossy().to_string();
-
-    let manager = Arc::new(ModelManager::new(dir));
+async fn test_speculative_generation_self_speculation_rejected() {
+    let tmp = tempdir().expect("tempdir");
+    let manager = Arc::new(ModelManager::new(tmp.path()));
     let handler = Runtime1Handler::new(manager);
 
     let params = json!({
-        "model": stem.clone(),
-        "speculative_draft_model": stem,
-        "prompt": "Hello world",
-        "max_tokens": 4,
+        "model": "qwen2.5-7b",
+        "speculative_draft_model": "qwen2.5-7b",
+        "prompt": "Hello",
+        "max_tokens": 8
+    });
+
+    let reply = handler
+        .handle_call("io.syntrop.Runtime1.Generate", Some(&params))
+        .await
+        .expect("reply");
+
+    assert_eq!(
+        reply.error.as_deref(),
+        Some("io.syntrop.Runtime1.InvalidParameter")
+    );
+}
+
+#[tokio::test]
+async fn test_gated_speculative_generation_succeeds_if_gguf_present() {
+    let gguf_path = std::env::var("SYNTROP_TEST_GGUF")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .or_else(|| {
+            let p = std::path::PathBuf::from("/var/lib/models/gguf/qwen2.5-0.5b-instruct-q8_0.gguf");
+            if p.exists() {
+                Some(p)
+            } else {
+                None
+            }
+        });
+
+    let Some(gguf) = gguf_path else {
+        return;
+    };
+    if !gguf.exists() {
+        return;
+    }
+
+    let tok_file = gguf.with_extension("tokenizer.json");
+    if !tok_file.exists() {
+        return;
+    }
+
+    let tmp = tempdir().expect("tempdir");
+    let target_gguf = tmp.path().join("target.gguf");
+    let target_tok = tmp.path().join("target.tokenizer.json");
+    let draft_gguf = tmp.path().join("draft.gguf");
+    let draft_tok = tmp.path().join("draft.tokenizer.json");
+
+    let _ = std::os::unix::fs::symlink(&gguf, &target_gguf);
+    let _ = std::os::unix::fs::symlink(&tok_file, &target_tok);
+    let _ = std::os::unix::fs::symlink(&gguf, &draft_gguf);
+    let _ = std::os::unix::fs::symlink(&tok_file, &draft_tok);
+
+    let manager = Arc::new(ModelManager::new(tmp.path()));
+    let handler = Runtime1Handler::new(manager);
+
+    let params = json!({
+        "model": "target",
+        "speculative_draft_model": "draft",
+        "prompt": "Hello",
+        "max_tokens": 2,
         "temperature": 0.0
     });
 

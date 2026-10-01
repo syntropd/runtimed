@@ -180,3 +180,44 @@ async fn test_sensory1_wire_protocol_get_operator_presence() {
     drop(writer);
     let _ = server_task.await;
 }
+
+#[tokio::test]
+async fn test_sensory1_wire_protocol_capture_frame_device_not_found() {
+    let tmp = tempdir().expect("tempdir");
+    let manager = Arc::new(ModelManager::new(tmp.path()));
+    let handler = Arc::new(Runtime1Handler::new(manager));
+
+    let (client, server) = UnixStream::pair().expect("unix stream pair");
+    let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+    let trusted = TrustedGroup::from_gid(unsafe { libc::getgid() });
+
+    let server_task = tokio::spawn(async move {
+        let _ = handle_client(server, handler, trusted, shutdown_rx).await;
+    });
+
+    let (mut reader, mut writer) = client.into_split();
+
+    let req_frame = json!({
+        "method": "io.syntrop.Sensory1.CaptureFrame",
+        "parameters": {
+            "device": "/dev/video_phantom_nonexistent"
+        }
+    });
+    let mut req_bytes = serde_json::to_vec(&req_frame).expect("to_vec");
+    req_bytes.push(0x00);
+    writer.write_all(&req_bytes).await.expect("write_all");
+
+    let mut buf = vec![0u8; 4096];
+    let n = reader.read(&mut buf).await.expect("read");
+    assert!(n > 0);
+    let reply: serde_json::Value =
+        serde_json::from_slice(&buf[..n - 1]).expect("json from reply");
+    assert_eq!(reply["error"].as_str(), Some("io.syntrop.Sensory1.DeviceNotFound"));
+    assert_eq!(
+        reply["parameters"]["device"].as_str(),
+        Some("/dev/video_phantom_nonexistent")
+    );
+
+    drop(writer);
+    let _ = server_task.await;
+}

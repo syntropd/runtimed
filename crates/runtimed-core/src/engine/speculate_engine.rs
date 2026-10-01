@@ -14,6 +14,12 @@ pub fn generate_speculative(
     request: &GenerationRequest,
     k_draft: usize,
 ) -> Result<GenerationResult, RuntimedError> {
+    if std::ptr::eq(target_entry, draft_entry) {
+        return Err(RuntimedError::GenerationFailed(
+            "target model and speculative draft model cannot be identical instance".into(),
+        ));
+    }
+
     let start = Instant::now();
     let prompt_ids = target_entry.tokenizer.encode(&request.prompt, target_entry.add_special)?;
 

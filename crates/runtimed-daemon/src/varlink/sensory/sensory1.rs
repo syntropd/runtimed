@@ -73,6 +73,10 @@ impl Sensory1Handler {
                 "image_base64": res.image_base64,
                 "format": res.format,
             })),
+            Ok(Err(runtimed_core::error::RuntimedError::DeviceNotFound(dev))) => VarlinkReply::err(
+                "io.syntrop.Sensory1.DeviceNotFound",
+                Some(json!({ "device": dev })),
+            ),
             Ok(Err(e)) => VarlinkReply::err(
                 "io.syntrop.Sensory1.CaptureFailed",
                 Some(json!({ "reason": e.to_string() })),

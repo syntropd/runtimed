@@ -159,77 +159,70 @@ Socket Endpoint: `/run/syntrop/io.syntrop.Sensory1`
 ```varlink
 interface io.syntrop.Sensory1
 
-type AudioCaptureResult (
-  audio_base64: string,
+type AudioResult (
+  audio_pcm_base64: string,
   sample_rate: int,
-  channels: int,
-  duration_ms: int,
-  vad_active: bool,
-  rms_db: float
+  channels: int
 )
 
-type FrameCaptureResult (
+type FrameResult (
   image_base64: string,
-  format: string,
-  width: int,
-  height: int,
-  device: string,
-  silhouette_detected: bool,
-  patches_base64: ?string
+  format: string
 )
 
-type ScreenCaptureResult (
-  image_base64: string,
-  format: string,
-  width: int,
-  height: int
-)
-
-type OperatorPresence (
+type PresenceResult (
   present: bool,
   confidence: float,
-  audio_vad: bool,
-  video_motion: bool
+  reason: string
 )
 
-method CaptureAudio(duration_ms: ?int) -> (result: AudioCaptureResult)
-method CaptureFrame(device: ?string, pool_patches: ?bool) -> (result: FrameCaptureResult)
-method CaptureScreen(display: ?string) -> (result: ScreenCaptureResult)
-method GetOperatorPresence() -> (presence: OperatorPresence)
+method CaptureAudio(duration_ms: ?int, sample_rate: ?int) -> (audio_pcm_base64: string, sample_rate: int, channels: int)
+method CaptureFrame(device: ?string, width: ?int, height: ?int) -> (image_base64: string, format: string)
+method CaptureScreen(display: ?string) -> (image_base64: string, format: string)
+method GetOperatorPresence() -> (present: bool, confidence: float, reason: string)
 
-error DeviceUnavailable(device: string)
+error DeviceNotFound(device: string)
 error CaptureFailed(reason: string)
-error InvalidParameter(parameter: string)
+error PermissionDenied()
 ```
 
 ## 2. Methods
 
 ### 2.1 `CaptureAudio`
-Records ambient audio from default system audio source via PipeWire PCM ingest (`pw-record`) and evaluates energy threshold Voice Activity Detection (VAD).
+Records ambient audio from default system audio source via PipeWire PCM ingest (`pw-record`) or synthetic fallback and evaluates energy threshold Voice Activity Detection (VAD).
 - Parameters:
-  - `duration_ms` (?int, optional): Duration in milliseconds (clamped between 50ms and 10,000ms, default 500ms).
+  - `duration_ms` (?int, optional): Duration in milliseconds (clamped between 100ms and 10,000ms, default 1,000ms).
+  - `sample_rate` (?int, optional): Sampling frequency (default 16,000 Hz, mono S16LE).
 - Returns:
-  - `result` (`AudioCaptureResult`): Base64-encoded 16kHz mono S16LE PCM bytes, sample rate, channels, duration, VAD flag, and computed RMS dB.
+  - `audio_pcm_base64` (string): Base64-encoded mono S16LE PCM bytes.
+  - `sample_rate` (int): Effective sampling frequency in Hz.
+  - `channels` (int): Number of audio channels (1).
 
 ### 2.2 `CaptureFrame`
-Captures an RGB24 webcam frame via Linux V4L2 device, evaluates silhouette presence heuristic, and optionally performs spatial pooling via `pool_patches`.
+Captures an RGB24 frame via Linux V4L2 device (or synthetic fallback), evaluates silhouette presence heuristic, integrates spatial patch pooling, and encodes to PNG base64.
 - Parameters:
   - `device` (?string, optional): V4L2 video device path (default `/dev/video0`).
-  - `pool_patches` (?bool, optional): If true, runs 2x2 spatial patch pooling into normalized f32 embeddings.
+  - `width` (?int, optional): Frame width in pixels (clamped 64 to 1920, default 640).
+  - `height` (?int, optional): Frame height in pixels (clamped 64 to 1080, default 480).
 - Returns:
-  - `result` (`FrameCaptureResult`): PNG base64, format, width, height, device path, silhouette flag, and optional pooled patches base64.
+  - `image_base64` (string): PNG image payload encoded as base64 string.
+  - `format` (string): Encoding format ("png").
 
 ### 2.3 `CaptureScreen`
 Captures display desktop screen buffer or synthetic canvas fallback into PNG base64 via unprivileged Wayland portal / KMS dumb buffer detection.
 - Parameters:
   - `display` (?string, optional): Display identifier (e.g. `:0`, `wayland-0`).
 - Returns:
-  - `result` (`ScreenCaptureResult`): PNG base64, format, width (1280), height (720).
+  - `image_base64` (string): PNG image payload encoded as base64 string.
+  - `format` (string): Encoding format ("png").
 
 ### 2.4 `GetOperatorPresence`
 Fuses microphone audio VAD energy and webcam frame silhouette variance into a unified presence probability and confidence estimate.
 - Parameters: none.
 - Returns:
-  - `presence` (`OperatorPresence`): Composite `present` boolean, confidence score (0.0–1.0), audio VAD active flag, and video motion / silhouette flag.
+  - `present` (bool): True if operator presence is detected via acoustic energy or visual silhouette.
+  - `confidence` (float): Detection confidence score (0.0–1.0).
+  - `reason` (string): Descriptive heuristic reason detailing active sensor modalities.
+
 
 

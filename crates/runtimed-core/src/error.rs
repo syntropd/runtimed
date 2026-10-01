@@ -45,6 +45,10 @@ pub enum RuntimedError {
     /// Sensory input capture failure.
     #[error("Sensory capture failure: {0}")]
     SensoryCapture(String),
+
+    /// Requested sensory hardware device was not found.
+    #[error("Device '{0}' not found")]
+    DeviceNotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, RuntimedError>;

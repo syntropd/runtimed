@@ -5,11 +5,7 @@ use crate::error::RuntimedError;
 use candle_core::Tensor;
 use runtimed_model::cache::{PagedKvCache, SpillManager};
 use runtimed_model::decode::generate::{last_row, TextModel};
-use std::fs::{self, OpenOptions};
-use std::io::Read;
-use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
-use std::time::Instant;
+use std::{fs::{self, OpenOptions}, io::Read, os::unix::fs::OpenOptionsExt, path::Path, time::Instant};
 use tracing::{info, warn};
 
 pub const DEFAULT_DRM_PATH: &str = "/sys/class/drm";
@@ -19,14 +15,13 @@ fn read_nonblocking_u64(path: &Path) -> Option<u64> {
     let mut file = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(path).ok()?;
     let mut buf = [0u8; 64];
     let n = file.read(&mut buf).ok()?;
-    if n == 0 {
-        return None;
-    }
+    if n == 0 { return None; }
     std::str::from_utf8(&buf[..n]).ok()?.trim().parse::<u64>().ok()
 }
 
 /// Reads DRM sysfs VRAM used and total bytes, falling back to system memory if unavailable.
 pub fn sample_vram_metrics_from(drm_base: &Path, meminfo_path: &Path) -> (u64, u64) {
+    let mut best: Option<(u64, u64)> = None;
     if let Ok(entries) = fs::read_dir(drm_base) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -37,19 +32,22 @@ pub fn sample_vram_metrics_from(drm_base: &Path, meminfo_path: &Path) -> (u64, u
                     .or_else(|| read_nonblocking_u64(&dev.join("lmem_used_bytes")));
                 let total = read_nonblocking_u64(&dev.join("mem_info_vram_total"))
                     .or_else(|| read_nonblocking_u64(&dev.join("tile0/memory/vram0/total")))
+                    .or_else(|| read_nonblocking_u64(&dev.join("tile0/physical_vram_size")))
                     .or_else(|| read_nonblocking_u64(&dev.join("lmem_total_bytes")));
                 if let (Some(u), Some(t)) = (used, total) {
-                    if t > 0 {
-                        return (u, t);
+                    if t > 0 && best.map_or(true, |(_, cur_t)| t > cur_t) {
+                        best = Some((u, t));
                     }
                 }
             }
         }
     }
+    if let Some(metrics) = best {
+        return metrics;
+    }
 
     if let Ok(content) = fs::read_to_string(meminfo_path) {
-        let mut total = 0u64;
-        let mut avail = 0u64;
+        let (mut total, mut avail) = (0u64, 0u64);
         for line in content.lines() {
             if let Some(rest) = line.strip_prefix("MemTotal:") {
                 total = rest.split_whitespace().next().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * 1024;
@@ -81,24 +79,14 @@ pub fn evaluate_and_spill_with_metrics(
     let decision = controller.evaluate(vram_used, vram_total, now);
     match &decision {
         WatermarkDecision::Spill { bytes_to_evict, .. } => {
-            let block_bytes = cache
-                .blocks
-                .first()
-                .map(|b| (b.k.elem_count() + b.v.elem_count()) * 4)
-                .unwrap_or(1024 * 1024);
+            let block_bytes = cache.blocks.first().map(|b| (b.k.elem_count() + b.v.elem_count()) * b.k.dtype().size_in_bytes()).unwrap_or(1024 * 1024);
             let count = if block_bytes > 0 { ((*bytes_to_evict as usize) / block_bytes).max(1) } else { 1 };
-            let spilled = spiller
-                .spill_blocks(cache, count)
-                .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+            let spilled = spiller.spill_blocks(cache, count).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
             warn!(spilled, bytes_to_evict, "High watermark exceeded: spilled L1 blocks to L2 host RAM");
         }
         WatermarkDecision::Prefetch { .. } => {
-            let restored = spiller
-                .restore_origin_blocks(cache, 1)
-                .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-            if restored > 0 {
-                info!(restored, "Low watermark dwell satisfied: restored L2 blocks to accelerator");
-            }
+            let restored = spiller.restore_origin_blocks(cache, 1).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+            if restored > 0 { info!(restored, "Low watermark dwell satisfied: restored L2 blocks to accelerator"); }
         }
         _ => {}
     }
@@ -117,6 +105,7 @@ pub fn evaluate_and_spill(
 }
 
 /// Managed decode loop that samples DRM/system VRAM periodically and triggers cache spills/restores.
+#[allow(clippy::too_many_arguments)]
 pub fn decode_loop_managed<M: TextModel>(
     model: &mut M,
     first_logits: &Tensor,
@@ -134,6 +123,12 @@ pub fn decode_loop_managed<M: TextModel>(
     let mut pos = prompt_len;
     let mut step = 0usize;
 
+    if check_interval > 0 {
+        if let Err(e) = evaluate_and_spill(controller, spiller, cache, Instant::now()) {
+            warn!("Initial watermark evaluation error: {e}");
+        }
+    }
+
     loop {
         out.push(id);
         if out.len() >= max_new || eos.contains(&id) {
@@ -142,7 +137,9 @@ pub fn decode_loop_managed<M: TextModel>(
 
         step += 1;
         if check_interval > 0 && step % check_interval == 0 {
-            let _ = evaluate_and_spill(controller, spiller, cache, Instant::now());
+            if let Err(e) = evaluate_and_spill(controller, spiller, cache, Instant::now()) {
+                warn!("Watermark evaluation error during decode step {step}: {e}");
+            }
         }
 
         let logits = model.forward(std::slice::from_ref(&id), pos)?;
@@ -161,21 +158,13 @@ mod tests {
     use std::time::Duration;
     use tempfile::tempdir;
 
-    struct StubModel {
-        vocab: usize,
-        id: u32,
-    }
-
+    struct StubModel { vocab: usize, id: u32 }
     impl TextModel for StubModel {
         fn forward(&mut self, ids: &[u32], _q0: usize) -> runtimed_model::Result<Tensor> {
             let mut row = vec![0.0f32; self.vocab];
             row[self.id as usize] = 9.0;
-            let seq = ids.len().max(1);
-            let mut flat = Vec::with_capacity(seq * self.vocab);
-            for _ in 0..seq {
-                flat.extend_from_slice(&row);
-            }
-            Ok(Tensor::from_vec(flat, (1, seq, self.vocab), &Device::Cpu)?)
+            let flat: Vec<f32> = (0..ids.len().max(1)).flat_map(|_| row.clone()).collect();
+            Ok(Tensor::from_vec(flat, (1, ids.len().max(1), self.vocab), &Device::Cpu)?)
         }
         fn reset(&mut self) {}
     }
@@ -188,6 +177,15 @@ mod tests {
         let (used, total) = sample_vram_metrics_from(dir.path(), &meminfo);
         assert_eq!(total, 16_000_000 * 1024);
         assert_eq!(used, 12_000_000 * 1024);
+
+        let dev_dir = dir.path().join("renderD128/device/tile0");
+        fs::create_dir_all(&dev_dir).unwrap();
+        fs::write(dev_dir.join("physical_vram_size"), "8589934592\n").unwrap();
+        let mem_dir = dev_dir.join("memory/vram0");
+        fs::create_dir_all(&mem_dir).unwrap();
+        fs::write(mem_dir.join("used"), "4294967296\n").unwrap();
+        let (xe_u, xe_t) = sample_vram_metrics_from(dir.path(), &meminfo);
+        assert_eq!((xe_u, xe_t), (4294967296, 8589934592));
     }
 
     #[test]
@@ -219,6 +217,11 @@ mod tests {
         assert!(matches!(d3, WatermarkDecision::Prefetch { .. }));
         assert_eq!(cache.count_tier_blocks(StorageTier::L1Vram), 1);
         assert_eq!(cache.count_tier_blocks(StorageTier::L2PinnedHost), 0);
+
+        // Rapid oscillation to deadband (75%) resets dwell cooldown
+        let d_osc = evaluate_and_spill_with_metrics(&mut ctrl, &spiller, &mut cache, 7_500_000_000, total, t2 + Duration::from_secs(1)).unwrap();
+        assert_eq!(d_osc, WatermarkDecision::None);
+        assert!(!ctrl.is_cooling_down());
     }
 
     #[test]

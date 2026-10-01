@@ -117,12 +117,14 @@ fn execute_stage_layer(
         let staged = prefetcher.acquire_active(cl);
         cache.append_kv(cl, &k, &v, dev)?;
         if let Some(s) = staged {
-            if s.k.dim(2)? < k.dim(2)? + s.k.dim(2)? && s.k.dim(2)? > 0 {
-                k = Tensor::cat(&[&s.k, &k], 2)?;
-                v = Tensor::cat(&[&s.v, &v], 2)?;
-            } else {
-                k = s.k;
-                v = s.v;
+            if s.k.dim(2)? > 0 {
+                if k.dim(2)? > 0 {
+                    k = Tensor::cat(&[&s.k, &k], 2)?;
+                    v = Tensor::cat(&[&s.v, &v], 2)?;
+                } else {
+                    k = s.k;
+                    v = s.v;
+                }
             }
         } else if let Some((ak, av)) = cache.assemble_layer_kv(cl, dev)? {
             k = ak;
@@ -132,7 +134,9 @@ fn execute_stage_layer(
         // Prefetch (l + 1)-th layer KV tensors concurrently while computing l-th layer attention
         if let Some(next_layer) = next_prefetch {
             let next_cl = if next_layer < cache.n_layer { next_layer } else { i + 1 };
-            let _ = prefetcher.prefetch_from_cache(cache, next_cl);
+            if next_cl < cache.n_layer {
+                let _ = prefetcher.prefetch_from_cache(cache, next_cl);
+            }
         }
     }
 
@@ -189,5 +193,45 @@ mod tests {
         let stages = vec![PipelineStage::new(0, 1, 0, 1, 1, Device::Cpu, dummy_w)];
         let err_empty_ids = forward_pipeline(&stages, &cfg, &[], 0, None).unwrap_err();
         assert!(matches!(err_empty_ids, ModelError::Config(_)));
+    }
+
+    #[test]
+    fn test_forward_pipeline_with_layer_prefetch_and_cache() {
+        let lc = crate::config::LayerConfig {
+            n_head: 2, n_kv: 2, head_dim: 32, ffn: 64, is_swa: false,
+            has_kv: true, rope_theta: 10000.0, rope_dim: 32, kv_source: 0,
+        };
+        let cfg = ArchConfig {
+            arch: crate::config::Arch::Qwen2, n_layer: 2, hidden: 64, vocab: 50, eps: 1e-5,
+            act: crate::config::Activation::Silu, tie_lm_head: false, has_qkv_bias: false,
+            embed_scale: 1.0, final_softcap: None, attn_scale: None, sliding_window: None,
+            rope_factors: None, ple_dim: 0, layers: vec![lc.clone(), lc],
+        };
+        let mut map = HashMap::new();
+        map.insert("token_embd.weight".into(), Tensor::zeros((50, 64), DType::F32, &Device::Cpu).unwrap());
+        map.insert("output_norm.weight".into(), Tensor::ones(64, DType::F32, &Device::Cpu).unwrap());
+        map.insert("output.weight".into(), Tensor::zeros((50, 64), DType::F32, &Device::Cpu).unwrap());
+        for i in 0..2 {
+            let p = format!("blk.{i}");
+            map.insert(format!("{p}.attn_norm.weight"), Tensor::ones(64, DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.attn_q.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.attn_k.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.attn_v.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.attn_output.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.ffn_norm.weight"), Tensor::ones(64, DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.ffn_gate.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.ffn_up.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+            map.insert(format!("{p}.ffn_down.weight"), Tensor::zeros((64, 64), DType::F32, &Device::Cpu).unwrap());
+        }
+        let w = Arc::new(Weights::from_parts(Device::Cpu, DType::F32, map));
+        let stages = vec![PipelineStage::new(0, 1, 0, 2, 2, Device::Cpu, w)];
+        let mut cache = crate::cache::PagedKvCache::new(2);
+        let k0 = Tensor::zeros((1, 2, 2, 32), DType::F32, &Device::Cpu).unwrap();
+        let v0 = Tensor::zeros((1, 2, 2, 32), DType::F32, &Device::Cpu).unwrap();
+        cache.allocate_block(&Device::Cpu, crate::cache::StorageTier::L2PinnedHost, k0, v0, 2);
+        cache.layer_tables[1].push(0);
+
+        let out = forward_pipeline(&stages, &cfg, &[5], 0, Some(&mut [cache])).unwrap();
+        assert_eq!(out.dims(), &[1, 1, 50]);
     }
 }

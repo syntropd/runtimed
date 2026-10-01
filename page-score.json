@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "6920ec6",
+ "rev": "afad7aa",
  "dirty": true,
  "pages": [
   {
@@ -264,7 +264,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/memory/sample_vram.rs",
-   "lines": 242,
+   "lines": 245,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -915,7 +915,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
-   "lines": 193,
+   "lines": 237,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

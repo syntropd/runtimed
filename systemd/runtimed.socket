@@ -5,7 +5,6 @@ PartOf=runtimed.service
 
 [Socket]
 ListenStream=/run/syntrop/io.syntrop.Runtime1
-ListenStream=/run/syntrop/io.syntrop.Sensory1
 SocketMode=0660
 SocketUser=root
 SocketGroup=syntrop

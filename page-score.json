@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "b24fd73",
- "dirty": true,
+ "rev": "44e3e1f",
+ "dirty": false,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -166,14 +166,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 250,
+   "lines": 243,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
-   "lines": 184,
+   "lines": 192,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -264,7 +264,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/memory/sample_vram.rs",
-   "lines": 247,
+   "lines": 253,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -341,7 +341,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/loader/load_model.rs",
-   "lines": 195,
+   "lines": 201,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -369,7 +369,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/meta.rs",
-   "lines": 70,
+   "lines": 75,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
@@ -691,7 +691,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/gemma4.rs",
-   "lines": 246,
+   "lines": 247,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -705,7 +705,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 136,
+   "lines": 168,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -823,46 +823,53 @@
    "reach": 3
   },
   {
-   "path": "./crates/runtimed-model/src/decode/generate.rs",
-   "lines": 149,
+   "path": "./crates/runtimed-model/src/decode/draft_session.rs",
+   "lines": 174,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 12
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/decode/generate.rs",
+   "lines": 157,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 13
   },
   {
    "path": "./crates/runtimed-model/src/decode/mod.rs",
-   "lines": 9,
+   "lines": 12,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-model/src/decode/sample.rs",
-   "lines": 112,
+   "lines": 141,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 7
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
-   "lines": 244,
+   "lines": 250,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 4
+   "reach": 5
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
-   "lines": 141,
+   "lines": 196,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 2
+   "reach": 3
   },
   {
    "path": "./crates/runtimed-model/src/error.rs",
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 43
+   "reach": 44
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -992,7 +999,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/sampler/vocab_trie.rs",
-   "lines": 165,
+   "lines": 184,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

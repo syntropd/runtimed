@@ -75,7 +75,10 @@ impl ModelManager {
                     RuntimedError::GenerationFailed(e.to_string())
                 })?;
                 let arch_tag = f.meta_str("general.architecture").unwrap_or("?");
-                let (tok, eos, sp) = EngineTokenizer::load_for_arch(s.config().arch, &f, &p)?;
+                let (tok, eos, sp) = EngineTokenizer::load_for_arch(s.config().arch, &f, &p).map_err(|e| {
+                    self.relinquish(name);
+                    RuntimedError::from(e)
+                })?;
                 let params: u64 = f.tensors.iter().map(|t| t.n_elements as u64).sum();
                 let ctx = crate::model::meta::meta_u32(&f, &format!("{arch_tag}.context_length"))
                     .map(|c| c as usize)
@@ -109,7 +112,10 @@ impl ModelManager {
                     RuntimedError::GenerationFailed(e.to_string())
                 })?;
                 let arch_tag = f.meta_str("general.architecture").unwrap_or("?");
-                let (tok, eos, sp) = EngineTokenizer::load_for_arch(s.config().arch, &f, &p)?;
+                let (tok, eos, sp) = EngineTokenizer::load_for_arch(s.config().arch, &f, &p).map_err(|e| {
+                    self.relinquish(name);
+                    RuntimedError::from(e)
+                })?;
                 let params: u64 = f.tensors.iter().map(|t| t.n_elements as u64).sum();
                 let ctx = crate::model::meta::meta_u32(&f, &format!("{arch_tag}.context_length"))
                     .map(|c| c as usize)
@@ -165,5 +171,25 @@ mod tests {
         let mgr = ModelManager::new(tmp.path());
         let res = mgr.load_model("test_model", Some("invalid_accel"));
         assert!(matches!(res, Err(RuntimedError::HardwareAllocation(_))));
+    }
+
+    #[test]
+    fn test_load_model_corrupt_file() {
+        let tmp = TempDir::new().unwrap();
+        let model_path = tmp.path().join("corrupt.gguf");
+        std::fs::write(&model_path, b"not_a_valid_gguf_file").unwrap();
+        let mgr = ModelManager::new(tmp.path());
+        let res = mgr.load_model("corrupt", None);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_load_model_corrupt_safetensors() {
+        let tmp = TempDir::new().unwrap();
+        let model_path = tmp.path().join("corrupt.safetensors");
+        std::fs::write(&model_path, b"not_a_valid_safetensors_file").unwrap();
+        let mgr = ModelManager::new(tmp.path());
+        let res = mgr.load_model("corrupt", None);
+        assert!(res.is_err());
     }
 }

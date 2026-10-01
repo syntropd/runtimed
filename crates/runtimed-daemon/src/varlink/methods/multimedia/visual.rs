@@ -143,6 +143,7 @@ pub async fn handle_generate_visual(
     let tmp_path = out_dir.join(format!(".{id}.tmp"));
 
     if let Err(e) = tokio::fs::write(&tmp_path, &png_bytes).await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
         return VarlinkReply::err(
             "io.syntrop.Runtime1.GenerationFailed",
             Some(json!({ "reason": format!("failed to write temporary visual file: {e}") })),
@@ -191,6 +192,12 @@ mod tests {
         assert!(res["bytes"].as_u64().unwrap() > 0);
         let path_str = res["image_path"].as_str().unwrap();
         assert!(tokio::fs::try_exists(path_str).await.unwrap_or(false));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = tokio::fs::metadata(path_str).await.unwrap();
+            assert_eq!(meta.permissions().mode() & 0o777, 0o644);
+        }
         let _ = tokio::fs::remove_file(path_str).await;
     }
 
@@ -199,6 +206,16 @@ mod tests {
         let params = json!({ "width": 64 });
         let reply = handle_generate_visual(Some(&params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_visual_invalid_params() {
+        let reply = handle_generate_visual(None, None).await;
+        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+
+        let bad_dim = json!({ "prompt": "test", "width": 0 });
+        let reply_dim = handle_generate_visual(Some(&bad_dim), None).await;
+        assert_eq!(reply_dim.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }
 
     #[tokio::test]

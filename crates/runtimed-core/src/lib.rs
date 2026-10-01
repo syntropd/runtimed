@@ -28,4 +28,7 @@ pub use model::EngineEntry;
 pub use model::EngineTokenizer;
 pub use model::LoadedModel;
 pub use model::ModelManager;
-pub use memory::{DualWatermarkController, WatermarkDecision};
+pub use memory::{
+    decode_loop_managed, evaluate_and_spill, sample_vram_metrics, DualWatermarkController,
+    WatermarkDecision,
+};

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "63e4a99",
+ "rev": "6920ec6",
  "dirty": true,
  "pages": [
   {
@@ -218,7 +218,7 @@
    "lines": 68,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 15
+   "reach": 16
   },
   {
    "path": "./crates/runtimed-core/src/governor/device_headroom.rs",
@@ -250,24 +250,31 @@
   },
   {
    "path": "./crates/runtimed-core/src/lib.rs",
-   "lines": 31,
+   "lines": 34,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/memory/mod.rs",
-   "lines": 5,
+   "lines": 11,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/memory/sample_vram.rs",
+   "lines": 242,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-core/src/memory/watermark.rs",
    "lines": 240,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/client.rs",
@@ -820,7 +827,7 @@
    "lines": 138,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 11
+   "reach": 12
   },
   {
    "path": "./crates/runtimed-model/src/decode/mod.rs",
@@ -908,7 +915,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
-   "lines": 129,
+   "lines": 193,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

@@ -36,8 +36,17 @@ pub fn forward_pipeline(
             transfer_activation(&act, &stage.device)?
         };
 
+        // Initialize JIT layer prefetcher for this stage
+        let mut prefetcher = crate::cache::JitLayerPrefetcher::new(stage.device.clone());
+
         // Run layers assigned to this stage
         for layer_idx in stage.start_layer..stage.end_layer {
+            let local_layer = layer_idx.saturating_sub(stage.start_layer);
+            let next_prefetch = if layer_idx + 1 < stage.end_layer {
+                Some(local_layer + 1)
+            } else {
+                None
+            };
             let stage_cache = if let Some(ref mut caches) = stage_kv_caches {
                 caches.get_mut(idx)
             } else {
@@ -50,7 +59,9 @@ pub fn forward_pipeline(
                 &h,
                 pos,
                 stage_cache,
-                layer_idx.saturating_sub(stage.start_layer),
+                local_layer,
+                &mut prefetcher,
+                next_prefetch,
             )?;
         }
 
@@ -76,6 +87,8 @@ fn execute_stage_layer(
     q0: usize,
     stage_cache: Option<&mut crate::cache::PagedKvCache>,
     local_layer: usize,
+    prefetcher: &mut crate::cache::JitLayerPrefetcher,
+    next_prefetch: Option<usize>,
 ) -> Result<Tensor> {
     let lc = &cfg.layers[i];
     let pre = format!("blk.{i}");
@@ -101,10 +114,25 @@ fn execute_stage_layer(
 
     if let Some(cache) = stage_cache {
         let cl = if local_layer < cache.n_layer { local_layer } else { i };
+        let staged = prefetcher.acquire_active(cl);
         cache.append_kv(cl, &k, &v, dev)?;
-        if let Some((ak, av)) = cache.assemble_layer_kv(cl, dev)? {
+        if let Some(s) = staged {
+            if s.k.dim(2)? < k.dim(2)? + s.k.dim(2)? && s.k.dim(2)? > 0 {
+                k = Tensor::cat(&[&s.k, &k], 2)?;
+                v = Tensor::cat(&[&s.v, &v], 2)?;
+            } else {
+                k = s.k;
+                v = s.v;
+            }
+        } else if let Some((ak, av)) = cache.assemble_layer_kv(cl, dev)? {
             k = ak;
             v = av;
+        }
+
+        // Prefetch (l + 1)-th layer KV tensors concurrently while computing l-th layer attention
+        if let Some(next_layer) = next_prefetch {
+            let next_cl = if next_layer < cache.n_layer { next_layer } else { i + 1 };
+            let _ = prefetcher.prefetch_from_cache(cache, next_cl);
         }
     }
 
@@ -126,4 +154,40 @@ fn execute_stage_layer(
         &format!("{pre}.ffn_down.weight"),
     )?;
     Ok(h.broadcast_add(&mlp)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::{DType, Device};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_forward_pipeline_empty_validation() {
+        let cfg = ArchConfig {
+            arch: crate::config::Arch::Qwen2,
+            n_layer: 2,
+            hidden: 64,
+            vocab: 100,
+            eps: 1e-5,
+            act: crate::config::Activation::Silu,
+            tie_lm_head: false,
+            has_qkv_bias: false,
+            embed_scale: 1.0,
+            final_softcap: None,
+            attn_scale: None,
+            sliding_window: None,
+            rope_factors: None,
+            ple_dim: 0,
+            layers: vec![],
+        };
+        let err = forward_pipeline(&[], &cfg, &[1, 2], 0, None).unwrap_err();
+        assert!(matches!(err, ModelError::Config(_)));
+
+        let dummy_w = Arc::new(Weights::from_parts(Device::Cpu, DType::F32, HashMap::new()));
+        let stages = vec![PipelineStage::new(0, 1, 0, 1, 1, Device::Cpu, dummy_w)];
+        let err_empty_ids = forward_pipeline(&stages, &cfg, &[], 0, None).unwrap_err();
+        assert!(matches!(err_empty_ids, ModelError::Config(_)));
+    }
 }

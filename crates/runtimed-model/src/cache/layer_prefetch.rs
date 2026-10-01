@@ -91,15 +91,28 @@ impl JitLayerPrefetcher {
             _ => return Ok(false),
         };
 
-        for &bid in block_ids {
-            if let Some(block) = cache.blocks.get(bid) {
-                if block.tier == StorageTier::L2PinnedHost {
-                    self.prefetch_layer(layer_idx, &block.k, &block.v)?;
-                    return Ok(true);
-                }
-            }
+        let has_l2 = block_ids.iter().any(|&bid| {
+            cache.blocks.get(bid).is_some_and(|b| b.tier == StorageTier::L2PinnedHost)
+        });
+
+        if !has_l2 {
+            return Ok(false);
         }
-        Ok(false)
+
+        if let Some((k, v)) = cache.assemble_layer_kv(layer_idx, &self.target_device)? {
+            let staging_idx = self.staging_slot_idx();
+            self.staging_buffers[staging_idx] = Some(StagedLayerBuffer {
+                layer_idx,
+                k,
+                v,
+                device: self.target_device.clone(),
+                is_page_locked_transfer: true,
+            });
+            self.prefetch_count += 1;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Acquire the currently active layer staging buffer if matching `expected_layer`.
@@ -187,11 +200,15 @@ mod tests {
     #[test]
     fn test_prefetch_from_paged_cache_l2() {
         let mut cache = PagedKvCache::new(4);
-        let k = Tensor::zeros((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
-        let v = Tensor::ones((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
+        let k1 = Tensor::zeros((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
+        let v1 = Tensor::ones((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
+        let k2 = Tensor::zeros((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
+        let v2 = Tensor::ones((1, 2, 16, 32), DType::F32, &Device::Cpu).unwrap();
 
-        let b0 = cache.allocate_block(&Device::Cpu, StorageTier::L2PinnedHost, k, v, 16);
+        let b0 = cache.allocate_block(&Device::Cpu, StorageTier::L2PinnedHost, k1, v1, 16);
+        let b1 = cache.allocate_block(&Device::Cpu, StorageTier::L2PinnedHost, k2, v2, 16);
         cache.layer_tables[2].push(b0);
+        cache.layer_tables[2].push(b1);
 
         let mut prefetcher = JitLayerPrefetcher::new(Device::Cpu);
         let staged_ok = prefetcher.prefetch_from_cache(&cache, 2).unwrap();
@@ -199,5 +216,7 @@ mod tests {
 
         let staged = prefetcher.acquire_active(2).unwrap();
         assert_eq!(staged.layer_idx, 2);
+        assert_eq!(staged.k.dim(2).unwrap(), 32);
+        assert_eq!(staged.v.dim(2).unwrap(), 32);
     }
 }

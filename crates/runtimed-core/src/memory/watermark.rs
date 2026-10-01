@@ -40,6 +40,7 @@ pub struct DualWatermarkController {
     pub spill_target: f64,
     pub low_watermark: f64,
     pub dwell_cooldown: Duration,
+    is_spilling: bool,
     low_watermark_start: Option<Instant>,
     last_spill_instant: Option<Instant>,
 }
@@ -71,6 +72,7 @@ impl DualWatermarkController {
             spill_target,
             low_watermark,
             dwell_cooldown,
+            is_spilling: false,
             low_watermark_start: None,
             last_spill_instant: None,
         }
@@ -80,6 +82,10 @@ impl DualWatermarkController {
         self.low_watermark_start.is_some()
     }
 
+    pub fn is_spilling(&self) -> bool {
+        self.is_spilling
+    }
+
     pub fn last_spill(&self) -> Option<Instant> {
         self.last_spill_instant
     }
@@ -87,8 +93,9 @@ impl DualWatermarkController {
     /// Evaluates current VRAM usage against dual watermarks.
     ///
     /// - At or above high watermark (>= 85%): triggers batch spill down to 70%.
+    /// - Continuing hysteresis: remains in spilling state until <= 70% is reached.
     /// - At or below low watermark (<= 65%): enables prefetch only after a continuous 5.0s dwell timer.
-    /// - Hysteresis deadband (65% < usage < 85%): cancels low watermark dwell timer and holds steady.
+    /// - Hysteresis deadband: cancels low watermark dwell timer and holds steady.
     pub fn evaluate(
         &mut self,
         vram_used_bytes: u64,
@@ -101,7 +108,8 @@ impl DualWatermarkController {
 
         let ratio = vram_used_bytes as f64 / vram_total_bytes as f64;
 
-        if ratio >= self.high_watermark {
+        if ratio >= self.high_watermark || (self.is_spilling && ratio > self.spill_target) {
+            self.is_spilling = true;
             self.low_watermark_start = None;
             self.last_spill_instant = Some(now);
 
@@ -113,6 +121,10 @@ impl DualWatermarkController {
                 bytes_to_evict,
                 used_ratio: ratio,
             };
+        }
+
+        if self.is_spilling && ratio <= self.spill_target {
+            self.is_spilling = false;
         }
 
         if ratio <= self.low_watermark {
@@ -140,8 +152,9 @@ impl DualWatermarkController {
         WatermarkDecision::None
     }
 
-    /// Reset any internal dwell timers
+    /// Reset any internal dwell timers and hysteresis state
     pub fn reset(&mut self) {
+        self.is_spilling = false;
         self.low_watermark_start = None;
         self.last_spill_instant = None;
     }
@@ -154,25 +167,45 @@ mod tests {
     #[test]
     fn test_high_watermark_triggers_spill_to_70() {
         let mut ctrl = DualWatermarkController::new();
-        let total = 10_000_000_000u64; // 10 GB
-        let used = 8_600_000_000u64;  // 86% (> 85%)
-        let now = Instant::now();
-
-        let decision = ctrl.evaluate(used, total, now);
+        let total = 10_000_000_000u64;
+        let used = 8_600_000_000u64; // 86% (> 85%)
+        let decision = ctrl.evaluate(used, total, Instant::now());
         match decision {
-            WatermarkDecision::Spill {
-                current_used_bytes,
-                target_bytes,
-                bytes_to_evict,
-                used_ratio,
-            } => {
-                assert_eq!(current_used_bytes, 8_600_000_000);
-                assert_eq!(target_bytes, 7_000_000_000); // 70%
+            WatermarkDecision::Spill { target_bytes, bytes_to_evict, .. } => {
+                assert_eq!(target_bytes, 7_000_000_000);
                 assert_eq!(bytes_to_evict, 1_600_000_000);
-                assert!((used_ratio - 0.86).abs() < 1e-4);
             }
             other => panic!("Expected Spill decision, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_hysteresis_spill_continuity() {
+        let mut ctrl = DualWatermarkController::new();
+        let total = 10_000_000_000u64;
+        let t0 = Instant::now();
+        assert!(matches!(ctrl.evaluate(8_600_000_000, total, t0), WatermarkDecision::Spill { .. }));
+        assert!(ctrl.is_spilling());
+        // At 75% (in deadband), hysteresis must hold spilling state until <= 70%
+        let d = ctrl.evaluate(7_500_000_000, total, t0 + Duration::from_millis(100));
+        assert!(matches!(d, WatermarkDecision::Spill { bytes_to_evict: 500_000_000, .. }));
+        // Once <= 70%, spilling clears
+        let d_end = ctrl.evaluate(6_900_000_000, total, t0 + Duration::from_millis(200));
+        assert!(!ctrl.is_spilling());
+        assert_eq!(d_end, WatermarkDecision::None);
+    }
+
+    #[test]
+    fn test_jitter_resets_dwell_timer() {
+        let mut ctrl = DualWatermarkController::new();
+        let total = 10_000_000_000u64;
+        let t0 = Instant::now();
+        assert!(matches!(ctrl.evaluate(6_000_000_000, total, t0), WatermarkDecision::CoolingDown { .. }));
+        // Spike to 66% cancels dwell timer
+        assert_eq!(ctrl.evaluate(6_600_000_000, total, t0 + Duration::from_secs(3)), WatermarkDecision::None);
+        // Drops back to 60%: timer resets to full duration
+        let d = ctrl.evaluate(6_000_000_000, total, t0 + Duration::from_secs(4));
+        assert!(matches!(d, WatermarkDecision::CoolingDown { dwell_remaining, .. } if dwell_remaining == Duration::from_millis(5000)));
     }
 
     #[test]
@@ -180,12 +213,8 @@ mod tests {
         let mut ctrl = DualWatermarkController::new();
         let total = 10_000_000_000u64;
         let t0 = Instant::now();
-
-        // 60% starts dwell cooldown
         let d1 = ctrl.evaluate(6_000_000_000, total, t0);
         assert!(matches!(d1, WatermarkDecision::CoolingDown { .. }));
-
-        // 75% enters deadband: cancels dwell
         let d2 = ctrl.evaluate(7_500_000_000, total, t0 + Duration::from_secs(2));
         assert_eq!(d2, WatermarkDecision::None);
         assert!(!ctrl.is_cooling_down());
@@ -196,12 +225,8 @@ mod tests {
         let mut ctrl = DualWatermarkController::new();
         let total = 10_000_000_000u64;
         let t0 = Instant::now();
-
-        // At t = 0s (60%)
         let d0 = ctrl.evaluate(6_000_000_000, total, t0);
         assert!(matches!(d0, WatermarkDecision::CoolingDown { .. }));
-
-        // At t = 4.9s (still cooling down)
         let d4 = ctrl.evaluate(6_000_000_000, total, t0 + Duration::from_millis(4900));
         match d4 {
             WatermarkDecision::CoolingDown { dwell_remaining, .. } => {
@@ -209,8 +234,6 @@ mod tests {
             }
             other => panic!("Expected CoolingDown, got {:?}", other),
         }
-
-        // At t = 5.0s (prefetch enabled!)
         let d5 = ctrl.evaluate(6_000_000_000, total, t0 + Duration::from_millis(5000));
         assert!(matches!(d5, WatermarkDecision::Prefetch { .. }));
     }

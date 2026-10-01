@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "18e1ab7",
+ "rev": "63e4a99",
  "dirty": true,
  "pages": [
   {
@@ -250,10 +250,24 @@
   },
   {
    "path": "./crates/runtimed-core/src/lib.rs",
-   "lines": 29,
+   "lines": 31,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/memory/mod.rs",
+   "lines": 5,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-core/src/memory/watermark.rs",
+   "lines": 240,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/client.rs",
@@ -725,8 +739,15 @@
    "reach": 4
   },
   {
+   "path": "./crates/runtimed-model/src/cache/layer_prefetch.rs",
+   "lines": 222,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-model/src/cache/mod.rs",
-   "lines": 23,
+   "lines": 25,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -736,7 +757,7 @@
    "lines": 248,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 2
+   "reach": 3
   },
   {
    "path": "./crates/runtimed-model/src/cache/sink_mask.rs",
@@ -834,7 +855,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 42
+   "reach": 43
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",

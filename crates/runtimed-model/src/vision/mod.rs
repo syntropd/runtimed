@@ -185,7 +185,7 @@ impl VisionTower {
         let h = h.affine((cfg.hidden as f32).sqrt() as f64, 0.0)?;
         // Projector: scaleless norm, linear to text width.
         let h = ops::rms_norm_plain(&h, cfg.eps)?;
-        Ok(self.w.linear(&h, "mm.input_projection.weight")?)
+        self.w.linear(&h, "mm.input_projection.weight")
     }
 }
 

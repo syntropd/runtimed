@@ -79,6 +79,7 @@ pub fn forward_pipeline(
     Err(ModelError::Config("Pipeline completed without reaching final stage".into()))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_stage_layer(
     cfg: &ArchConfig,
     w: &Weights,

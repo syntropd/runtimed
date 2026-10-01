@@ -6,6 +6,7 @@ use runtimed_gguf::{GgufBpe, GgufFile, MetaValue, Tokenizer};
 use std::path::Path;
 
 /// Tokenizer behind one interface: file-backed or GGUF-embedded BPE.
+#[allow(clippy::large_enum_variant)]
 pub enum EngineTokenizer {
     File(Tokenizer),
     Bpe(GgufBpe),

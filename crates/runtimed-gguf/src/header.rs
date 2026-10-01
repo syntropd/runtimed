@@ -164,7 +164,7 @@ impl GgufFile {
             _ => 32,
         }
         .max(1);
-        let data_start = (cur.pos as u64 + align - 1) / align * align;
+        let data_start = (cur.pos as u64).div_ceil(align) * align;
         let file_len = mmap.len() as u64;
         let mut tensors = Vec::with_capacity(raw_infos.len());
         for (name, dims, dtype, rel) in raw_infos {

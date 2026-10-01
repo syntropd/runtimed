@@ -87,13 +87,17 @@ pub fn sample_from_probs(p: &[f32], mut rand01: impl FnMut() -> f32) -> u32 {
         r += 1.0;
     }
     let mut acc = 0.0f32;
+    let mut last_valid = 0;
     for (i, &x) in p.iter().enumerate() {
+        if x > 0.0 {
+            last_valid = i;
+        }
         acc += x;
         if r < acc {
             return i as u32;
         }
     }
-    (p.len() - 1) as u32
+    last_valid as u32
 }
 
 /// Temperature + top-k + top-p sampling over a `[vocab]` row.

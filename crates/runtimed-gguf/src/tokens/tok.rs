@@ -10,18 +10,6 @@ pub struct Tokenizer {
     inner: tokenizers::Tokenizer,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn from_file_missing_errors() {
-        let err =
-            Tokenizer::from_file(std::path::Path::new("/nonexistent-dir-xyz/tok.json")).err().expect("must fail");
-        assert!(matches!(err, GgufError::Tokenizer(_)), "{err:?}");
-    }
-}
-
 impl Tokenizer {
     pub fn from_file(path: &Path) -> Result<Self> {
         let inner = tokenizers::Tokenizer::from_file(path)
@@ -44,5 +32,17 @@ impl Tokenizer {
 
     pub fn vocab_size(&self) -> usize {
         self.inner.get_vocab_size(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_file_missing_errors() {
+        let err =
+            Tokenizer::from_file(std::path::Path::new("/nonexistent-dir-xyz/tok.json")).err().expect("must fail");
+        assert!(matches!(err, GgufError::Tokenizer(_)), "{err:?}");
     }
 }

@@ -91,6 +91,7 @@ impl Weights {
         Self::load_safetensors_from_bytes(&mmap, dev, keep)
     }
 
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     pub fn load_safetensors_from_bytes(
         bytes: &[u8],
         dev: &Device,

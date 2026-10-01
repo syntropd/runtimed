@@ -191,8 +191,8 @@ mod tests {
         assert!((s[1] - 0.7310586).abs() < 1e-6);
         let g = gelu_tanh(&x).unwrap().to_vec1::<f32>().unwrap();
         assert!((g[0] - 0.0).abs() < 1e-7);
-        assert!((g[1] - 0.84119199).abs() < 1e-6);
-        assert!((g[2] + 0.15880801).abs() < 1e-6);
+        assert!((g[1] - 0.841_192).abs() < 1e-6);
+        assert!((g[2] + 0.158_808).abs() < 1e-6);
     }
 
     #[test]

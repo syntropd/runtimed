@@ -8,6 +8,7 @@ use crate::sampler::vocab_trie::VocabTrie;
 use candle_core::Tensor;
 
 /// Sample a token constrained by an FSM grammar, advancing the grammar state.
+#[allow(clippy::too_many_arguments)]
 pub fn sample_with_grammar<G: FsmGrammar + ?Sized>(
     logits: &Tensor,
     grammar: &G,

@@ -13,7 +13,7 @@ pub struct LogitMask {
 impl LogitMask {
     /// Construct a mask from an array of allowed token IDs.
     pub fn from_allowed(allowed: &[u32], vocab_size: usize) -> Self {
-        let num_words = (vocab_size + 63) / 64;
+        let num_words = vocab_size.div_ceil(64);
         let mut words = vec![0u64; num_words];
         for &id in allowed {
             let idx = id as usize;

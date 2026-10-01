@@ -79,11 +79,12 @@ pub fn dequant_q5_0_block(block: &[u8]) -> [f32; 32] {
 
 
 /// Whole-tensor decode. `n_elements` must be an exact block multiple.
+#[allow(clippy::chunks_exact_to_as_chunks)]
 pub fn dequant_tensor(dtype: GgmlDtype, bytes: &[u8], n_elements: usize) -> Result<Vec<f32>> {
     let Some((elems, block_bytes)) = dtype.block() else {
         return Err(GgufError::Unsupported(dtype));
     };
-    if n_elements % elems != 0 {
+    if !n_elements.is_multiple_of(elems) {
         return Err(GgufError::Overflow(format!(
             "{n_elements} not a multiple of {elems}"
         )));

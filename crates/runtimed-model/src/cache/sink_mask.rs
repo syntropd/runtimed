@@ -51,8 +51,8 @@ mod tests {
         assert_eq!(row[1], 0.0);
 
         // Middle tokens 2..=7 evicted from window
-        for j in 2..=7 {
-            assert_eq!(row[j], f32::NEG_INFINITY, "pos {j} should be masked");
+        for item in &row[2..=7] {
+            assert_eq!(*item, f32::NEG_INFINITY, "pos should be masked");
         }
 
         // Window tokens 8..=10 allowed

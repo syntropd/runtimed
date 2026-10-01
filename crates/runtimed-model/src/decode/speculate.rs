@@ -26,6 +26,7 @@ pub struct SpeculativeStep {
 ///    first rejection emits a correction token sampled from residual distribution (p(x) - q(x))⁺.
 /// 4. If all K accepted, target emits 1 bonus token.
 /// 5. Caches are truncated to the accepted prefix in O(1) time.
+#[allow(clippy::too_many_arguments)]
 pub fn speculative_step(
     draft: &mut Session,
     target: &mut Session,
@@ -122,7 +123,8 @@ pub fn speculative_step(
     }
 
     // 4. Bonus token if all K candidates accepted
-    if accepted.len() == draft_tokens.len() && !hit_eos {
+    let all_accepted = accepted.len() == draft_tokens.len();
+    if all_accepted && !hit_eos {
         let last_idx = draft_tokens.len() - 1;
         let last_target_row = target_logits.narrow(1, last_idx, 1)?.squeeze(1)?.squeeze(0)?;
         let p_bonus = probs(&last_target_row, temperature, top_k, top_p)?;
@@ -133,24 +135,25 @@ pub fn speculative_step(
         }
     }
 
-    // 5. O(1) KV cache rollback to accepted prefix
-    let new_pos = current_pos + accepted.len().saturating_sub(1);
-    target.truncate(new_pos);
-    draft.truncate(new_pos);
-
-    // Prepare next head rows
-    let last_tok = *accepted.last().unwrap_or(&0);
-    let next_target = if !hit_eos {
-        let l = target.forward(&[last_tok], new_pos)?;
-        last_row(&l)?
+    // 5. O(1) KV cache rollback and next head rows preparation
+    let (next_draft, next_target) = if hit_eos {
+        target.truncate(current_pos + accepted.len());
+        draft.truncate(current_pos + accepted.len());
+        (draft_head_row.clone(), target_head_row.clone())
+    } else if all_accepted {
+        let bonus = *accepted.last().unwrap_or(&0);
+        let t_logits = target.forward(&[bonus], current_pos + draft_tokens.len())?;
+        let last_draft = *draft_tokens.last().unwrap_or(&0);
+        let d_logits = draft.forward(&[last_draft, bonus], current_pos + draft_tokens.len() - 1)?;
+        (last_row(&d_logits)?, last_row(&t_logits)?)
     } else {
-        target_head_row.clone()
-    };
-    let next_draft = if !hit_eos {
-        let l = draft.forward(&[last_tok], new_pos)?;
-        last_row(&l)?
-    } else {
-        draft_head_row.clone()
+        let corr = *accepted.last().unwrap_or(&0);
+        let corr_pos = current_pos + draft_accepted_count;
+        target.truncate(corr_pos);
+        draft.truncate(corr_pos);
+        let t_logits = target.forward(&[corr], corr_pos)?;
+        let d_logits = draft.forward(&[corr], corr_pos)?;
+        (last_row(&d_logits)?, last_row(&t_logits)?)
     };
 
     Ok((
@@ -183,8 +186,8 @@ mod tests {
 
     #[test]
     fn test_residual_math() {
-        let p_target = vec![0.1f32, 0.7, 0.2];
-        let q_draft = vec![0.4f32, 0.3, 0.3];
+        let p_target = [0.1f32, 0.7, 0.2];
+        let q_draft = [0.4f32, 0.3, 0.3];
         let alpha = (p_target[0] / q_draft[0]).min(1.0);
         assert!((alpha - 0.25).abs() < 1e-5);
 
@@ -192,5 +195,12 @@ mod tests {
         assert_eq!(res[0], 0.0);
         assert!((res[1] - 0.4).abs() < 1e-5);
         assert_eq!(res[2], 0.0);
+    }
+
+    #[test]
+    fn test_sample_from_probs_avoids_zero_prob_tails() {
+        let p = [1.0f32, 0.0, 0.0];
+        let tok = sample_from_probs(&p, || 0.999999);
+        assert_eq!(tok, 0);
     }
 }

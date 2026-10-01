@@ -30,12 +30,12 @@ pub fn dequant_q4_k_block(block: &[u8]) -> [f32; 256] {
         let (d1, m1) = (d * sc as f32, min * m as f32);
         let (sc, m) = scale_min_k4(is + 1, scales);
         let (d2, m2) = (d * sc as f32, min * m as f32);
-        for l in 0..32 {
-            out[o] = d1 * (q[l] & 0xF) as f32 - m1;
+        for &byte in q {
+            out[o] = d1 * (byte & 0xF) as f32 - m1;
             o += 1;
         }
-        for l in 0..32 {
-            out[o] = d2 * (q[l] >> 4) as f32 - m2;
+        for &byte in q {
+            out[o] = d2 * (byte >> 4) as f32 - m2;
             o += 1;
         }
         is += 2;

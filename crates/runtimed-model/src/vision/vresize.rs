@@ -137,11 +137,11 @@ fn resample_pass(src: &[u8], w: usize, h: usize, t: usize, horizontal: bool) -> 
                 let xcnt = bounds[ox * 2 + 1];
                 let k = &weights[ox * ksize..];
                 let mut acc = [1i32 << (PILLOW_PRECISION_BITS - 1); 3];
-                for x in 0..xcnt {
+                for (x, &weight) in k.iter().enumerate().take(xcnt) {
                     let p = (y * w + xmin + x) * 3;
-                    acc[0] += src[p] as i32 * k[x];
-                    acc[1] += src[p + 1] as i32 * k[x];
-                    acc[2] += src[p + 2] as i32 * k[x];
+                    acc[0] += src[p] as i32 * weight;
+                    acc[1] += src[p + 1] as i32 * weight;
+                    acc[2] += src[p + 2] as i32 * weight;
                 }
                 let d = (y * t + ox) * 3;
                 out[d] = clip8(acc[0] >> PILLOW_PRECISION_BITS);

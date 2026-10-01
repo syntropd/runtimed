@@ -7,18 +7,19 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 static SHARED_TRIE_POOL: OnceLock<Mutex<HashMap<String, Arc<VocabTrie>>>> = OnceLock::new();
 
-/// Retrieve or initialize a pooled, shared `Arc<VocabTrie>` keyed by model family.
+/// Retrieve or initialize a pooled, shared `Arc<VocabTrie>` keyed by model family and vocab size.
 pub fn get_or_create_shared_vocab_trie(
     family_key: &str,
     tokenizer: &EngineTokenizer,
 ) -> Arc<VocabTrie> {
     let pool = SHARED_TRIE_POOL.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = pool.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(trie) = guard.get(family_key) {
+    let key = format!("{}:{}", family_key, tokenizer.vocab_size());
+    if let Some(trie) = guard.get(&key) {
         return Arc::clone(trie);
     }
     let trie = Arc::new(VocabTrie::from_tokenizer(tokenizer));
-    guard.insert(family_key.to_string(), Arc::clone(&trie));
+    guard.insert(key, Arc::clone(&trie));
     trie
 }
 

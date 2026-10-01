@@ -146,7 +146,7 @@ impl GgufBpe {
             .filter(|(i, _)| specials.contains(&(*i as u32)) || is_special(types[*i]))
             .map(|(i, t)| (t.clone(), i as u32))
             .collect();
-        special_texts.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        special_texts.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
         Ok(Self {
             types,
             tokens,

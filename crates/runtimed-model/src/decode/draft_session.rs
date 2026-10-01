@@ -92,6 +92,7 @@ impl HeterogeneousDraftSession {
     }
 
     /// Execute one speculative step.
+    #[allow(clippy::too_many_arguments)]
     pub fn step(
         &mut self,
         current_pos: usize,

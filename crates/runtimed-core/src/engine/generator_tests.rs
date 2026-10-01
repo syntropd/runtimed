@@ -75,7 +75,7 @@ fn test_resolve_adaptive_default() {
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, 10.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, ok_free, f32::NAN), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cpu", ok_model, ok_free, 0.0), ReasoningEffort::None);
-    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, 1 * GIB, 0.0), ReasoningEffort::None);
+    assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, GIB, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", (30 * GIB) as usize, 2 * GIB, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", ok_model, 1_610_612_735, 0.0), ReasoningEffort::None);
     assert_eq!(ReasoningEffort::resolve_adaptive_default(true, "cuda", 5usize * 1_610_612_736usize, 1_610_612_736, 0.0), ReasoningEffort::Low);
@@ -161,6 +161,24 @@ fn test_generate_managed_zero_budget() {
         |_| Ok(2),
     ).unwrap();
     assert!(out.is_empty());
+    assert_eq!(model.reset_count, 0);
+}
+
+#[test]
+fn test_generate_managed_empty_prompt() {
+    let mut model = TestManagedModel { vocab: 6, id: 1, reset_count: 0 };
+    let out = generate(
+        &mut model,
+        &[],
+        &[5],
+        2,
+        |logits| {
+            let v = logits.to_vec1::<f32>()?;
+            Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
+        },
+    ).unwrap();
+    assert_eq!(out, vec![1, 1]);
+    assert_eq!(model.reset_count, 1);
 }
 
 

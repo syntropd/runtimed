@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "ea648b1",
+ "rev": "b24fd73",
  "dirty": true,
  "pages": [
   {
@@ -166,14 +166,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 249,
+   "lines": 250,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
-   "lines": 166,
+   "lines": 184,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -824,7 +824,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/generate.rs",
-   "lines": 138,
+   "lines": 149,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 12

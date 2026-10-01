@@ -24,6 +24,11 @@ impl TextModel for crate::decode::session::Session {
 /// Last row `[vocab]` of a `[1, seq, vocab]` logit tensor.
 pub fn last_row(logits: &Tensor) -> Result<Tensor> {
     let t = logits.dim(1)?;
+    if t == 0 {
+        return Err(crate::error::ModelError::Config(
+            "empty logits sequence has no last row".into(),
+        ));
+    }
     Ok(logits.narrow(1, t - 1, 1)?.squeeze(1)?.squeeze(0)?)
 }
 
@@ -118,6 +123,12 @@ mod tests {
         let t = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], (1, 2, 2), &Device::Cpu).unwrap();
         let row = last_row(&t).unwrap().to_vec1::<f32>().unwrap();
         assert_eq!(row, vec![3.0, 4.0]);
+    }
+
+    #[test]
+    fn last_row_empty_sequence_returns_error() {
+        let t = Tensor::zeros((1, 0, 2), candle_core::DType::F32, &Device::Cpu).unwrap();
+        assert!(last_row(&t).is_err());
     }
 
     #[test]

@@ -82,6 +82,7 @@ pub(crate) fn generate<M: TextModel>(
     max_new: usize,
     next: impl FnMut(&candle_core::Tensor) -> runtimed_model::Result<u32>,
 ) -> runtimed_model::Result<Vec<u32>> {
+    if max_new == 0 { return Ok(Vec::new()); }
     model.reset();
     let logits = model.forward(prompt, 0)?;
     let mut ctrl = DualWatermarkController::new();
@@ -211,9 +212,9 @@ pub fn generate_tokens(
         (is_thinking, effort.to_budget(entry.meta.context_window))
     };
     let ids = if request.grammar_type.is_some() || request.grammar.is_some() {
-        generate_guided_tokens(&mut *session, entry, &prompt_ids, budget, request, rng)?
+        generate_guided_tokens(&mut session, entry, &prompt_ids, budget, request, rng)?
     } else if is_budgeted {
-        generate_with_budget(&mut *session, entry, &prompt_ids, budget, rb, request, rng)?
+        generate_with_budget(&mut session, entry, &prompt_ids, budget, rb, request, rng)?
     } else {
         generate(&mut *session, &prompt_ids, &entry.eos, budget, |logits| {
             sample::sample(logits, request.temperature, request.top_k, request.top_p, || rng.next_f32())

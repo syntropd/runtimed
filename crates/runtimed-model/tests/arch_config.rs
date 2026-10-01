@@ -101,7 +101,7 @@ fn rejects_unknown_arch() {
     let path = tmp("arch");
     forge(&path, "bert", true);
     let file = GgufFile::open(&path).expect("parse forged");
-    let err = ArchConfig::parse(&file).err().expect("must fail").to_string();
+    let err = ArchConfig::parse(&file).expect_err("must fail").to_string();
     let _ = std::fs::remove_file(&path);
     assert!(err.contains("unsupported architecture"), "{err}");
 }
@@ -111,7 +111,7 @@ fn refuses_qwen2_without_output_weight() {
     let path = tmp("nohead");
     forge(&path, "qwen2", false);
     let file = GgufFile::open(&path).expect("parse forged");
-    let err = ArchConfig::parse(&file).err().expect("must fail").to_string();
+    let err = ArchConfig::parse(&file).expect_err("must fail").to_string();
     let _ = std::fs::remove_file(&path);
     assert!(err.contains("without output.weight"), "{err}");
 }

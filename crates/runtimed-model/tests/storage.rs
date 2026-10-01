@@ -6,7 +6,7 @@
 use candle_core::Device;
 use runtimed_gguf::GgufFile;
 use runtimed_model::Session;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn gated() -> Option<PathBuf> {
     let path = PathBuf::from(std::env::var("SYNTROP_TEST_GGUF_Q4K").ok()?);
@@ -17,7 +17,7 @@ fn gated() -> Option<PathBuf> {
     Some(path)
 }
 
-fn param_count(path: &PathBuf) -> usize {
+fn param_count(path: &Path) -> usize {
     GgufFile::open(path)
         .expect("must parse")
         .tensors

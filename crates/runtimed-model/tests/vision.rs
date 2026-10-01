@@ -136,7 +136,6 @@ fn vision_matches_oracle_traces() {
         model.reset();
         let mut logits = model.forward_mm(&prompt, &soft, tok.pad_id()).expect("prefill");
         let (mut exact, mut ties) = (0usize, 0usize);
-        let mut pos = prompt.len();
         // Teacher-forced ranks, reused to certify a greedy divergence.
         let mut ranks: Vec<(u32, usize, f32)> = Vec::with_capacity(want.len());
         for (i, t) in row.topk.iter().enumerate() {
@@ -154,8 +153,7 @@ fn vision_matches_oracle_traces() {
                 );
                 ties += 1;
             }
-            logits = model.forward(&[want[i]], pos).expect("step");
-            pos += 1;
+            logits = model.forward(&[want[i]], prompt.len() + i).expect("step");
         }
         eprintln!("{}: teacher walk n={} exact={exact} certified-ties={ties}", row.id, want.len());
 

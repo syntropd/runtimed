@@ -83,7 +83,7 @@ pub async fn join_with_timeout<T>(handle: JoinHandle<T>, timeout: Duration) -> R
 /// Sweep interval for an idle limit: check at least every minute so
 /// a long limit still sheds promptly, but never faster than 5s.
 pub fn idle_tick(idle_secs: u64) -> Duration {
-    Duration::from_secs(idle_secs.min(60).max(5))
+    Duration::from_secs(idle_secs.clamp(5, 60))
 }
 
 /// Spawns idle unload: every tick the engine sheds resident models

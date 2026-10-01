@@ -25,7 +25,7 @@ pub async fn exec_list(client: &RuntimedClient, as_json: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<24} {:<12} {:<12} {:<10} {}", "MODEL", "BACKEND", "MEMORY", "PARAMS", "CONTEXT");
+    println!("{:<24} {:<12} {:<12} {:<10} CONTEXT", "MODEL", "BACKEND", "MEMORY", "PARAMS");
     println!("{}", "-".repeat(75));
 
     for m in models {

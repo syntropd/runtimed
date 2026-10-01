@@ -10,15 +10,15 @@ use candle_core::{Device, Tensor};
 
 /// `x / sqrt(mean(x^2) + eps) * w`, weight on the last axis.
 pub fn rms_norm(x: &Tensor, w: &Tensor, eps: f32) -> Result<Tensor> {
-    let m2 = (&x.broadcast_mul(x)?).mean_keepdim(candle_core::D::Minus1)?;
-    let denom = (&m2.broadcast_add(&Tensor::new(eps, x.device())?)?).sqrt()?;
+    let m2 = x.broadcast_mul(x)?.mean_keepdim(candle_core::D::Minus1)?;
+    let denom = m2.broadcast_add(&Tensor::new(eps, x.device())?)?.sqrt()?;
     Ok(x.broadcast_div(&denom)?.broadcast_mul(w)?)
 }
 
 /// RMSNorm without a weight (Gemma4 value norm).
 pub fn rms_norm_plain(x: &Tensor, eps: f32) -> Result<Tensor> {
-    let m2 = (&x.broadcast_mul(x)?).mean_keepdim(candle_core::D::Minus1)?;
-    let denom = (&m2.broadcast_add(&Tensor::new(eps, x.device())?)?).sqrt()?;
+    let m2 = x.broadcast_mul(x)?.mean_keepdim(candle_core::D::Minus1)?;
+    let denom = m2.broadcast_add(&Tensor::new(eps, x.device())?)?.sqrt()?;
     Ok(x.broadcast_div(&denom)?)
 }
 
@@ -80,7 +80,7 @@ pub fn rope_neox_pos(
 ) -> Result<Tensor> {
     let dev = x.device();
     let (_b, _h, t, d) = x.dims4()?;
-    assert!(rot_dim <= d && rot_dim % 2 == 0, "bad rot_dim {rot_dim} for {d}");
+    assert!(rot_dim <= d && rot_dim.is_multiple_of(2), "bad rot_dim {rot_dim} for {d}");
     assert_eq!(positions.len(), t, "one position per row");
     let half = rot_dim / 2;
     let mut cos = Vec::with_capacity(t * half);
@@ -143,7 +143,7 @@ fn repeat_kv_heads(kv: &Tensor, n_rep: usize) -> Result<Tensor> {
     let hv = kv.dim(1)?;
     let mut idx = Vec::with_capacity(hv * n_rep);
     for head in 0..hv as u32 {
-        idx.extend(std::iter::repeat(head).take(n_rep));
+        idx.extend(std::iter::repeat_n(head, n_rep));
     }
     let idx = Tensor::from_vec(idx, hv * n_rep, kv.device())?;
     Ok(kv.contiguous()?.index_select(&idx, 1)?)

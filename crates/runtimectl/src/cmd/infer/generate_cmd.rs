@@ -5,6 +5,7 @@ use anyhow::Result;
 use serde_json::json;
 
 /// Executes the `generate` command.
+#[allow(clippy::too_many_arguments)]
 pub async fn exec_generate(
     client: &RuntimedClient,
     model: &str,

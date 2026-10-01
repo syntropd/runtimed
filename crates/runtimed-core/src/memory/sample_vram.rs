@@ -36,7 +36,7 @@ pub fn sample_vram_metrics_from(drm_base: &Path, meminfo_path: &Path) -> (u64, u
                     .or_else(|| read_nonblocking_u64(&dev.join("tile0/physical_vram_size")))
                     .or_else(|| read_nonblocking_u64(&dev.join("lmem_total_bytes")));
                 if let (Some(u), Some(t)) = (used, total) {
-                    if t > 0 && best.map_or(true, |(_, cur_t)| t > cur_t) {
+                    if t > 0 && best.is_none_or(|(_, cur_t)| t > cur_t) {
                         best = Some((u, t));
                     }
                 }
@@ -81,7 +81,7 @@ pub fn evaluate_and_spill_with_metrics(
     match &decision {
         WatermarkDecision::Spill { bytes_to_evict, .. } => {
             let bb = cache.blocks.first().map(|b| (b.k.elem_count() + b.v.elem_count()) * b.k.dtype().size_in_bytes()).unwrap_or(1024 * 1024);
-            let count = if bb > 0 { ((*bytes_to_evict as usize) / bb).max(1) } else { 1 };
+            let count = (*bytes_to_evict as usize).checked_div(bb).unwrap_or(0).max(1);
             let spilled = spiller.spill_blocks(cache, count).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
             warn!(spilled, bytes_to_evict, "High watermark exceeded: spilled L1 blocks to L2 host RAM");
         }
@@ -149,7 +149,7 @@ pub fn decode_loop_managed<M: TextModel>(
         }
 
         step += 1;
-        if check_interval > 0 && step % check_interval == 0 {
+        if check_interval > 0 && step.is_multiple_of(check_interval) {
             eval_step(controller, model, cache);
         }
 

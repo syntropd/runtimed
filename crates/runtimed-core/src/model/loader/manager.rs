@@ -83,9 +83,9 @@ impl ModelManager {
         #[cfg(not(feature = "cuda"))]
         {
             let _ = spec;
-            return Err(RuntimedError::HardwareAllocation(
+            Err(RuntimedError::HardwareAllocation(
                 "cuda backend needs a --features cuda build".into(),
-            ));
+            ))
         }
         #[cfg(feature = "cuda")]
         {

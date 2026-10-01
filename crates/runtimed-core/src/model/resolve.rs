@@ -4,6 +4,7 @@
 //! 1. Flat: `<models_dir>/<name>[.gguf]` (historic standalone tree).
 //! 2. Fleet: `<models_dir>/gguf/<name>[.gguf]` (shared tree where
 //!    `modeld` owns sibling dirs like `cas/`, `pinned/`, `tags/`).
+//!
 //! Absolute paths pass through untouched. The registry is read from
 //! `<models_dir>/registry.toml`, falling back to the `gguf/` subdir
 //! when the root file is absent.

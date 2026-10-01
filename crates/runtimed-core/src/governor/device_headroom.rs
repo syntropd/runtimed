@@ -43,11 +43,12 @@ impl DeviceHeadroom {
     ) -> Self {
         let delta = spec.delta_token_bytes(assigned_layers);
         let max_tokens = if is_cpu {
-            if delta == 0 { 0 } else { (available_vram_bytes / delta) as usize }
-        } else if delta == 0 {
-            usize::MAX
+            available_vram_bytes.checked_div(delta).unwrap_or(0) as usize
         } else {
-            (available_vram_bytes / delta) as usize
+            available_vram_bytes
+                .checked_div(delta)
+                .map(|v| v as usize)
+                .unwrap_or(usize::MAX)
         };
 
         Self {
@@ -68,7 +69,7 @@ pub fn read_system_available_memory() -> u64 {
         .and_then(|info| {
             for line in info.lines() {
                 if let Some(rest) = line.strip_prefix("MemAvailable:") {
-                    let kb = rest.trim_start().split_whitespace().next()?.parse::<u64>().ok()?;
+                    let kb = rest.split_whitespace().next()?.parse::<u64>().ok()?;
                     return Some(kb * 1024);
                 }
             }

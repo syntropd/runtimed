@@ -129,7 +129,7 @@ fn layer(
         let heads = y.dim(2)? / lc.head_dim;
         Ok(y.reshape((1, t, heads, lc.head_dim))?.transpose(1, 2)?)
     };
-    let factors = (!lc.is_swa).then(|| cfg.rope_factors.as_deref()).flatten();
+    let factors = (!lc.is_swa).then_some(cfg.rope_factors.as_deref()).flatten();
     let q = w.linear(&n, &format!("{pre}.attn_q.weight"))?;
     let q = ops::rms_norm(&split(q)?, &w.get(&format!("{pre}.attn_q_norm.weight"))?, cfg.eps)?;
     let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, factors)?;
@@ -156,7 +156,7 @@ fn layer(
         (sk, sv)
     };
     let total = k_full.dim(2)?;
-    let window = lc.is_swa.then(|| cfg.sliding_window).flatten();
+    let window = lc.is_swa.then_some(cfg.sliding_window).flatten();
     let mask = ops::causal_mask(t, total, q0, window, dev)?;
     let scale = cfg.attn_scale.unwrap_or_else(|| (lc.head_dim as f32).sqrt().recip());
     let o = ops::attention(&q, &k_full, &v_full, &mask, scale)?;

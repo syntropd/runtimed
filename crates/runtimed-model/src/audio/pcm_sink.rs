@@ -54,6 +54,7 @@ impl BufferSink {
         self.buffer
     }
 
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     pub fn samples(&self) -> Vec<i16> {
         self.buffer
             .chunks_exact(2)

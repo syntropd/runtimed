@@ -142,7 +142,7 @@ pub fn forward(
         h = layer(cfg, w, cache, i, &h, q0)?;
     }
     h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
-    Ok(w.linear(&h, "output.weight")?)
+    w.linear(&h, "output.weight")
 }
 
 /// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.

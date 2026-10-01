@@ -57,7 +57,7 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
         .get("head_dim")
         .and_then(Value::as_u64)
         .map(|h| h as usize)
-        .unwrap_or_else(|| if n_head > 0 { hidden / n_head } else { 0 });
+        .unwrap_or_else(|| hidden.checked_div(n_head).unwrap_or(0));
     let ffn = v
         .get("intermediate_size")
         .and_then(Value::as_u64)

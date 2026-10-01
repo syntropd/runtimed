@@ -56,7 +56,7 @@ pub fn mm_prompt(tok: &GgufBpe, user: &str, n_soft: usize) -> Result<Vec<u32>> {
     ids.push(turn);
     ids.extend(tok.encode("user\n", false));
     ids.push(crate::vision::IMG_BEG);
-    ids.extend(std::iter::repeat(crate::vision::IMG_TOKEN).take(n_soft));
+    ids.extend(std::iter::repeat_n(crate::vision::IMG_TOKEN, n_soft));
     ids.push(crate::vision::IMG_END);
     ids.extend(tok.encode(user, false));
     ids.push(turn_end);

@@ -65,8 +65,8 @@ pub fn generate_speculative(
         let k = k_draft.min(remaining_budget);
 
         let (step, next_draft, next_target) = speculative_step(
-            &mut *draft_session,
-            &mut *target_session,
+            &mut draft_session,
+            &mut target_session,
             current_pos,
             k,
             &draft_head,

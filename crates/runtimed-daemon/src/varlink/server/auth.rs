@@ -140,7 +140,7 @@ pub fn is_user_in_group(uid: u32, target_gid: u32) -> bool {
             return false;
         }
     }
-    groups[..ngroups as usize].iter().any(|&g| g as u32 == target_gid)
+    groups[..ngroups as usize].contains(&target_gid)
 }
 
 /// Returns `Ok(())` when the peer is root or in the trusted group, else Err.

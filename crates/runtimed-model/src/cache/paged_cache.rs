@@ -75,13 +75,10 @@ impl PagedKvCache {
 
         let mut offset = 0;
         while offset < n_tokens {
-            let last_info = self.layer_tables[layer].last().copied().and_then(|bid| {
-                if self.blocks[bid].num_tokens < BLOCK_SIZE {
-                    Some(bid)
-                } else {
-                    None
-                }
-            });
+            let last_info = self.layer_tables[layer]
+                .last()
+                .copied()
+                .filter(|&bid| self.blocks[bid].num_tokens < BLOCK_SIZE);
 
             if let Some(last_bid) = last_info {
                 let block = &mut self.blocks[last_bid];

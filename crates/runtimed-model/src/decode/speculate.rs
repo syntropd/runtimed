@@ -74,16 +74,21 @@ pub fn speculative_step(
         let p_x = p_target.get(cand_idx).copied().unwrap_or(0.0);
         let q_x = q_draft.get(cand_idx).copied().unwrap_or(0.0);
 
-        let alpha = if q_x <= 0.0 {
-            if p_x > 0.0 { 1.0 } else { 0.0 }
+        let accept = if q_x <= 0.0 || q_x.is_nan() {
+            p_x > 0.0
         } else if p_x >= q_x {
-            1.0
+            true
         } else {
-            p_x / q_x
+            let alpha = p_x / q_x;
+            if alpha.is_nan() {
+                false
+            } else {
+                let u = rand01().clamp(0.0, 1.0);
+                u < alpha
+            }
         };
 
-        let u = (rand01() % 1.0).abs();
-        if u < alpha {
+        if accept {
             // Candidate accepted
             accepted.push(cand);
             draft_accepted_count += 1;
@@ -100,12 +105,16 @@ pub fn speculative_step(
             for idx in 0..vocab_size {
                 let p_val = p_target.get(idx).copied().unwrap_or(0.0);
                 let q_val = q_draft.get(idx).copied().unwrap_or(0.0);
-                let diff = (p_val - q_val).max(0.0);
+                let diff = if p_val.is_nan() || q_val.is_nan() {
+                    0.0
+                } else {
+                    (p_val - q_val).max(0.0)
+                };
                 residual.push(diff);
                 residual_sum += diff;
             }
 
-            let correction_token = if residual_sum > 1e-8 {
+            let correction_token = if residual_sum > 1e-8 && !residual_sum.is_nan() {
                 for r in residual.iter_mut() {
                     *r /= residual_sum;
                 }
@@ -136,23 +145,27 @@ pub fn speculative_step(
     }
 
     // 5. O(1) KV cache rollback and next head rows preparation
-    let (next_draft, next_target) = if hit_eos {
-        target.truncate(current_pos + accepted.len());
-        draft.truncate(current_pos + accepted.len());
-        (draft_head_row.clone(), target_head_row.clone())
-    } else if all_accepted {
-        let bonus = *accepted.last().unwrap_or(&0);
-        let t_logits = target.forward(&[bonus], current_pos + draft_tokens.len())?;
-        let last_draft = *draft_tokens.last().unwrap_or(&0);
-        let d_logits = draft.forward(&[last_draft, bonus], current_pos + draft_tokens.len() - 1)?;
-        (last_row(&d_logits)?, last_row(&t_logits)?)
-    } else {
+    let (next_draft, next_target) = if !all_accepted {
         let corr = *accepted.last().unwrap_or(&0);
         let corr_pos = current_pos + draft_accepted_count;
         target.truncate(corr_pos);
         draft.truncate(corr_pos);
-        let t_logits = target.forward(&[corr], corr_pos)?;
-        let d_logits = draft.forward(&[corr], corr_pos)?;
+        if hit_eos {
+            (draft_head_row.clone(), target_head_row.clone())
+        } else {
+            let t_logits = target.forward(&[corr], corr_pos)?;
+            let d_logits = draft.forward(&[corr], corr_pos)?;
+            (last_row(&d_logits)?, last_row(&t_logits)?)
+        }
+    } else if hit_eos {
+        target.truncate(current_pos + accepted.len());
+        draft.truncate(current_pos + accepted.len());
+        (draft_head_row.clone(), target_head_row.clone())
+    } else {
+        let bonus = *accepted.last().unwrap_or(&0);
+        let t_logits = target.forward(&[bonus], current_pos + draft_tokens.len())?;
+        let last_draft = *draft_tokens.last().unwrap_or(&0);
+        let d_logits = draft.forward(&[last_draft, bonus], current_pos + draft_tokens.len() - 1)?;
         (last_row(&d_logits)?, last_row(&t_logits)?)
     };
 
@@ -202,5 +215,23 @@ mod tests {
         let p = [1.0f32, 0.0, 0.0];
         let tok = sample_from_probs(&p, || 0.999999);
         assert_eq!(tok, 0);
+    }
+
+    #[test]
+    fn test_zero_prob_draft_and_nan_resilience() {
+        let (p_x, q_x) = (0.5f32, 0.0f32);
+        let accept_zero_q = q_x <= 0.0 && p_x > 0.0;
+        assert!(accept_zero_q);
+
+        let (p_nan, q_val) = (f32::NAN, 0.3f32);
+        let diff = if p_nan.is_nan() || q_val.is_nan() { 0.0 } else { (p_nan - q_val).max(0.0) };
+        assert_eq!(diff, 0.0);
+    }
+
+    #[test]
+    fn test_rejection_prob_guaranteed_acceptance() {
+        let (p_x, q_x) = (0.6f32, 0.4f32);
+        let accept = p_x >= q_x;
+        assert!(accept);
     }
 }

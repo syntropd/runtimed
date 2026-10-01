@@ -99,7 +99,7 @@ fn generate_guided_tokens(
     let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
     let (t, k, p) = (req.temperature, req.top_k, req.top_p);
     let mut step = |g: &dyn FsmGrammar, st: &mut FsmState| {
-        generate(session, prompt_ids, &entry.eos, budget, &mut *ctrl, |l| {
+        generate(session, prompt_ids, &entry.eos, budget, &mut ctrl, |l| {
             sample_with_grammar(l, g, st, trie, &entry.eos, t, k, p, || rng.next_f32())
         }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
     };
@@ -143,7 +143,7 @@ fn generate_with_budget(
         if toks.len() == 1 { tb.set_think_token_id(toks[0]); }
     }
     let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
-    generate(session, prompt_ids, &entry.eos, budget, &mut *ctrl, |logits| {
+    generate(session, prompt_ids, &entry.eos, budget, &mut ctrl, |logits| {
         let mut row = logits.to_vec1::<f32>()?;
         tb.enforce_logits(&mut row);
         let masked = candle_core::Tensor::from_vec(row, logits.shape(), logits.device())?;
@@ -209,7 +209,7 @@ pub fn generate_tokens(
         generate_with_budget(&mut session, entry, &prompt_ids, budget, rb, request, rng)?
     } else {
         let mut ctrl = entry.watermark_controller.lock().unwrap_or_else(|e| e.into_inner());
-        generate(&mut *session, &prompt_ids, &entry.eos, budget, &mut *ctrl, |logits| {
+        generate(&mut *session, &prompt_ids, &entry.eos, budget, &mut ctrl, |logits| {
             sample::sample(logits, request.temperature, request.top_k, request.top_p, || rng.next_f32())
         }).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?
     };

@@ -134,6 +134,7 @@ fn resolve_adapter_paths(path: &Path) -> Result<(std::path::PathBuf, std::path::
     )))
 }
 
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn decode_st_tensor(view: &safetensors::tensor::TensorView<'_>, dev: &Device) -> Result<Tensor> {
     let f32_data: Vec<f32> = match view.dtype() {
         safetensors::Dtype::F32 => view

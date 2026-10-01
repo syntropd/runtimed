@@ -5,8 +5,9 @@ use crate::model::meta::EngineEntry;
 use crate::model::tokenizer::EngineTokenizer;
 use super::mm;
 use super::ReasoningEffort;
-use runtimed_model::decode::{chat, sample};
-use runtimed_model::generate;
+use crate::memory::{decode_loop_managed, DualWatermarkController, DEFAULT_CHECK_INTERVAL};
+use runtimed_model::cache::{PagedKvCache, SpillManager};
+use runtimed_model::decode::{chat, generate::TextModel, sample};
 use serde::{Deserialize, Serialize};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -35,9 +36,7 @@ pub struct GenerationRequest {
     pub reasoning_effort: Option<ReasoningEffort>,
 }
 
-fn default_top_p() -> f32 {
-    1.0
-}
+fn default_top_p() -> f32 { 1.0 }
 
 /// Output payload from a completed generation run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +73,23 @@ fn text_prompt_ids(
         Some(bpe) => chat::text_prompt(bpe, prompt).map_err(|e| RuntimedError::GenerationFailed(e.to_string())),
         None => tokenizer.encode(prompt, add_special).map_err(Into::into),
     }
+}
+
+pub(crate) fn generate<M: TextModel>(
+    model: &mut M,
+    prompt: &[u32],
+    eos: &[u32],
+    max_new: usize,
+    next: impl FnMut(&candle_core::Tensor) -> runtimed_model::Result<u32>,
+) -> runtimed_model::Result<Vec<u32>> {
+    model.reset();
+    let logits = model.forward(prompt, 0)?;
+    let mut ctrl = DualWatermarkController::new();
+    let (spiller, mut cache) = (SpillManager::new(10), PagedKvCache::new(1));
+    decode_loop_managed(
+        model, &logits, prompt.len(), eos, max_new, next,
+        &mut ctrl, &spiller, &mut cache, DEFAULT_CHECK_INTERVAL,
+    )
 }
 
 fn generate_guided_tokens(

@@ -10,6 +10,7 @@ use tracing::{info, warn};
 
 pub const DEFAULT_DRM_PATH: &str = "/sys/class/drm";
 pub const DEFAULT_MEMINFO_PATH: &str = "/proc/meminfo";
+pub const DEFAULT_CHECK_INTERVAL: usize = 1;
 
 fn read_nonblocking_u64(path: &Path) -> Option<u64> {
     let mut file = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(path).ok()?;
@@ -118,6 +119,7 @@ pub fn decode_loop_managed<M: TextModel>(
     cache: &mut PagedKvCache,
     check_interval: usize,
 ) -> runtimed_model::Result<Vec<u32>> {
+    if max_new == 0 { return Ok(Vec::new()); }
     let mut out = Vec::new();
     let mut id = next(&last_row(first_logits)?)?;
     let mut pos = prompt_len;

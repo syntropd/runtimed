@@ -30,5 +30,5 @@ pub use model::LoadedModel;
 pub use model::ModelManager;
 pub use memory::{
     decode_loop_managed, evaluate_and_spill, sample_vram_metrics, DualWatermarkController,
-    WatermarkDecision,
+    WatermarkDecision, DEFAULT_CHECK_INTERVAL,
 };

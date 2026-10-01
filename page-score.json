@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "afad7aa",
+ "rev": "ea648b1",
  "dirty": true,
  "pages": [
   {
@@ -166,14 +166,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 233,
+   "lines": 249,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator_tests.rs",
-   "lines": 100,
+   "lines": 166,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -257,14 +257,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/memory/mod.rs",
-   "lines": 11,
+   "lines": 12,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/memory/sample_vram.rs",
-   "lines": 245,
+   "lines": 247,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

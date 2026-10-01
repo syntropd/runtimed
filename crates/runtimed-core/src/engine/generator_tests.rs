@@ -98,3 +98,69 @@ fn test_prompt_think_suffix_detection() {
     assert!(!"Hello world".trim_end().ends_with("<think>"));
 }
 
+struct TestManagedModel {
+    vocab: usize,
+    id: u32,
+    reset_count: usize,
+}
+
+impl TextModel for TestManagedModel {
+    fn forward(&mut self, ids: &[u32], _q0: usize) -> runtimed_model::Result<candle_core::Tensor> {
+        let mut row = vec![0.0f32; self.vocab];
+        row[self.id as usize] = 9.0;
+        let seq = ids.len().max(1);
+        let flat: Vec<f32> = (0..seq).flat_map(|_| row.clone()).collect();
+        Ok(candle_core::Tensor::from_vec(flat, (1, seq, self.vocab), &candle_core::Device::Cpu)?)
+    }
+    fn reset(&mut self) {
+        self.reset_count += 1;
+    }
+}
+
+#[test]
+fn test_generate_managed_execution() {
+    let mut model = TestManagedModel { vocab: 6, id: 3, reset_count: 0 };
+    let out = generate(
+        &mut model,
+        &[1, 2],
+        &[5],
+        4,
+        |logits| {
+            let v = logits.to_vec1::<f32>()?;
+            Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
+        },
+    ).unwrap();
+    assert_eq!(out, vec![3, 3, 3, 3]);
+    assert_eq!(model.reset_count, 1);
+}
+
+#[test]
+fn test_generate_managed_early_eos() {
+    let mut model = TestManagedModel { vocab: 6, id: 4, reset_count: 0 };
+    let out = generate(
+        &mut model,
+        &[1],
+        &[4],
+        8,
+        |logits| {
+            let v = logits.to_vec1::<f32>()?;
+            Ok(v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap().0 as u32)
+        },
+    ).unwrap();
+    assert_eq!(out, vec![4]);
+}
+
+#[test]
+fn test_generate_managed_zero_budget() {
+    let mut model = TestManagedModel { vocab: 6, id: 2, reset_count: 0 };
+    let out = generate(
+        &mut model,
+        &[1],
+        &[5],
+        0,
+        |_| Ok(2),
+    ).unwrap();
+    assert!(out.is_empty());
+}
+
+

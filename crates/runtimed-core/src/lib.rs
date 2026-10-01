@@ -5,6 +5,7 @@ pub mod decide;
 pub mod engine;
 pub mod error;
 pub mod governor;
+pub mod memory;
 pub mod model;
 pub mod psi;
 
@@ -27,3 +28,4 @@ pub use model::EngineEntry;
 pub use model::EngineTokenizer;
 pub use model::LoadedModel;
 pub use model::ModelManager;
+pub use memory::{DualWatermarkController, WatermarkDecision};

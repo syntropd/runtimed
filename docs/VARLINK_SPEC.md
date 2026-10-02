@@ -18,6 +18,14 @@ type LoadedModel (
   compute_backend: string
 )
 
+type BoundingBox (
+  label: string,
+  x1: int,
+  y1: int,
+  x2: int,
+  y2: int
+)
+
 type GenerationResult (
   text: string,
   prompt_tokens: int,
@@ -37,6 +45,7 @@ method UnloadModel(model: string) -> (freed_bytes: int)
 method ListLoadedModels() -> (models: []LoadedModel)
 method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (bytes_streamed: int, sample_rate: int, channels: int)
 method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (image_path: string, bytes: int, width: int, height: int, format: string)
+method GroundVisual(image_bytes: string, task: string) -> (text: string, regions: []BoundingBox)
 method CompactKvCache() -> (freed_bytes: int)
 
 error ModelNotFound(model: string)

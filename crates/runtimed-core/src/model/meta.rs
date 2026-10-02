@@ -54,6 +54,31 @@ pub(super) fn meta_u32(file: &GgufFile, key: &str) -> Option<u32> {
     }
 }
 
+/// Canonical model family key for pooling shared vocabulary trie instances.
+///
+/// Qwen 2, Qwen 2.5, Qwen-Coder, Qwen-VL, and DeepSeek-R1-distill-qwen models
+/// all share the identical 152k-token byte-level BPE vocabulary. Normalizing to
+/// a canonical family key ensures all sessions pool a single shared `Arc<VocabTrie>`.
+pub fn canonical_family_key(architecture: &str, model_name: &str) -> String {
+    let arch = architecture.to_ascii_lowercase();
+    let name = model_name.to_ascii_lowercase();
+    if arch.starts_with("qwen") || name.contains("qwen") || name.contains("deepseek-r1-distill-qwen") {
+        "qwen2".to_string()
+    } else {
+        arch
+    }
+}
+
+/// Retrieve or initialize a pooled vocabulary prefix trie for this model family.
+pub fn pool_family_vocab_trie(
+    architecture: &str,
+    model_name: &str,
+    tokenizer: &EngineTokenizer,
+) -> Arc<VocabTrie> {
+    let key = canonical_family_key(architecture, model_name);
+    runtimed_model::sampler::get_or_create_shared_vocab_trie(&key, tokenizer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +96,13 @@ mod tests {
         let v = serde_json::to_value(&meta).unwrap();
         assert_eq!(v["name"], "m");
         assert_eq!(serde_json::from_value::<LoadedModel>(v).unwrap(), meta);
+    }
+
+    #[test]
+    fn test_canonical_family_key_pooling() {
+        assert_eq!(canonical_family_key("qwen2", "qwen2.5-7b"), "qwen2");
+        assert_eq!(canonical_family_key("qwen2.5", "qwen2.5-0.5b"), "qwen2");
+        assert_eq!(canonical_family_key("llama", "deepseek-r1-distill-qwen-14b"), "qwen2");
+        assert_eq!(canonical_family_key("gemma2", "gemma-2-9b"), "gemma2");
     }
 }

@@ -7,6 +7,7 @@
 //! and video generation ([`video::handle_generate_video`]).
 
 pub mod audio;
+pub mod ground;
 pub mod music;
 pub mod storyboard;
 pub mod transcribe;
@@ -14,6 +15,7 @@ pub mod video;
 pub mod visual;
 
 pub use audio::handle_stream_audio_out;
+pub use ground::handle_ground_visual;
 pub use music::handle_generate_music;
 pub use storyboard::{render_storyboard_strip, resolve_runtime_dir, stitch_keyframe_images, write_atomic_file};
 pub use transcribe::handle_transcribe_audio;
@@ -43,5 +45,7 @@ mod tests {
         assert!(reply_visual.error.is_some());
         let reply_video = handle_generate_video(none_param, None).await;
         assert!(reply_video.error.is_some());
+        let reply_ground = handle_ground_visual(none_param, None).await;
+        assert!(reply_ground.error.is_some());
     }
 }

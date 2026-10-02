@@ -49,6 +49,7 @@ impl Runtime1Handler {
             "io.syntrop.Runtime1.GenerateAudio" => Some(super::multimedia::handle_generate_music(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.GenerateVisual" => Some(super::multimedia::handle_generate_visual(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.GenerateVideo" => Some(super::multimedia::handle_generate_video(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.GroundVisual" => Some(super::multimedia::handle_ground_visual(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.CompactKvCache" => Some(self.handle_compact_kv_cache()),
             _ => None,
         }

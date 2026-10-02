@@ -132,8 +132,9 @@ impl ModelManager {
             }
         };
 
-        let vocab_trie = runtimed_model::sampler::get_or_create_shared_vocab_trie(
+        let vocab_trie = crate::model::meta::pool_family_vocab_trie(
             &meta.architecture,
+            &meta.name,
             &tokenizer,
         );
         let entry = Arc::new(EngineEntry {

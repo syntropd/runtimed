@@ -41,6 +41,6 @@ pub use sampler::{
 };
 pub use tokenizer::EngineTokenizer;
 pub use tp::{ring_all_reduce, ColumnParallelLinear, RingReducer, RowParallelLinear};
-pub use vision::{PreparedImage, VisionTower};
+pub use vision::{BoundingBox, Florence2Engine, Florence2Result, Florence2Task, PreparedImage, VisionTower};
 pub use weights::Weights;
 

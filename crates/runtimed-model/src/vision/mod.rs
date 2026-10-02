@@ -5,11 +5,13 @@
 //! text width. Preprocessing lives in [`crate::vision::vpre`].
 
 pub mod ephemeral;
+pub mod florence2;
 pub mod pool_patches;
 pub mod temporal_window;
 pub mod vpre;
 pub mod vresize;
 
+pub use crate::vision::florence2::{BoundingBox, Florence2Engine, Florence2Result, Florence2Task};
 pub use crate::vision::pool_patches::pool_patches;
 pub use crate::vision::temporal_window::{
     TemporalFrame, TemporalFrameWindow, TemporalWindowConfig,

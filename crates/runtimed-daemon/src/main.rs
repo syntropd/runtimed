@@ -126,6 +126,14 @@ async fn main() -> Result<()> {
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigusr1 = signal(SignalKind::user_defined1())?;
+
+    let usr1_handle = tokio::spawn(async move {
+        while sigusr1.recv().await.is_some() {
+            info!("Received SIGUSR1 cooperative inference yield signal (250ms deadline)");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    });
 
     let server_handle = tokio::spawn(server.run(shutdown_rx, SHUTDOWN_TIMEOUT));
 
@@ -133,6 +141,7 @@ async fn main() -> Result<()> {
         _ = sigterm.recv() => info!("Received SIGTERM, initiating shutdown"),
         _ = sigint.recv() => info!("Received SIGINT, initiating shutdown"),
     }
+    usr1_handle.abort();
 
     if shutdown_tx.send(true).is_err() {
         warn!("Shutdown channel closed before send");

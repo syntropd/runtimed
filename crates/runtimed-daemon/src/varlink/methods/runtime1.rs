@@ -45,6 +45,7 @@ impl Runtime1Handler {
             "io.syntrop.Runtime1.Decide" => Some(self.handle_decide(params).await),
             "io.syntrop.Runtime1.StreamAudioOut" => Some(super::multimedia::handle_stream_audio_out(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.GenerateVisual" => Some(super::multimedia::handle_generate_visual(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.CompactKvCache" => Some(self.handle_compact_kv_cache()),
             _ => None,
         }
     }
@@ -201,5 +202,11 @@ impl Runtime1Handler {
                 Some(json!({ "reason": e.to_string() })),
             ),
         }
+    }
+
+    fn handle_compact_kv_cache(&self) -> VarlinkReply {
+        let freed = self.model_manager.unload_idle(0);
+        let freed_bytes: usize = freed.iter().map(|(_, b)| b).sum();
+        VarlinkReply::ok(json!({ "freed_bytes": freed_bytes }))
     }
 }

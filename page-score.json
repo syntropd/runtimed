@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "89d266f",
- "dirty": false,
+ "rev": "06a1a69",
+ "dirty": true,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -404,7 +404,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/psi/ebpf.rs",
-   "lines": 129,
+   "lines": 142,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -425,7 +425,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/psi/stack_reader.rs",
-   "lines": 191,
+   "lines": 192,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -488,7 +488,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/main.rs",
-   "lines": 202,
+   "lines": 211,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -565,14 +565,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 205,
+   "lines": 212,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 7
+   "reach": 8
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 113,
+   "lines": 114,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -1412,7 +1412,7 @@
   },
   {
    "path": "./qa/unit/src/telemetry_tests.rs",
-   "lines": 49,
+   "lines": 66,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

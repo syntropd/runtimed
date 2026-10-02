@@ -13,8 +13,22 @@ pub struct KernelTelemetry {
     pub ebpf_active: bool,
 }
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
+static EBPF_PRIVILEGE_STATE: AtomicU8 = AtomicU8::new(0);
+
 /// Automatic probe checking whether unprivileged container/WSL or restricted BPF.
 pub fn probe_ebpf_privilege() -> bool {
+    let state = EBPF_PRIVILEGE_STATE.load(Ordering::Relaxed);
+    if state != 0 {
+        return state == 2;
+    }
+    let res = do_probe_ebpf_privilege();
+    EBPF_PRIVILEGE_STATE.store(if res { 2 } else { 1 }, Ordering::Relaxed);
+    res
+}
+
+fn do_probe_ebpf_privilege() -> bool {
     if let Ok(fd) = open(
         Path::new("/proc/sys/kernel/unprivileged_bpf_disabled"),
         OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
@@ -53,11 +67,10 @@ pub fn probe_ebpf_privilege() -> bool {
 
     let trace_path = Path::new("/sys/kernel/tracing");
     let debug_trace_path = Path::new("/sys/kernel/debug/tracing");
-    if !trace_path.exists() && !debug_trace_path.exists() {
-        return false;
-    }
-
-    std::fs::read_dir(trace_path).is_ok() || std::fs::read_dir(debug_trace_path).is_ok()
+    let check_dir = |p: &Path| {
+        open(p, OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC, Mode::empty()).is_ok()
+    };
+    check_dir(trace_path) || check_dir(debug_trace_path)
 }
 
 /// Collects kernel telemetry using eBPF when privileged, or falls back to /proc/loadavg.

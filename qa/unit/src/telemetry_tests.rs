@@ -47,3 +47,20 @@ fn test_evaluate_and_shed_memory_thresholds() {
     assert!(evaluate_and_shed_memory(&manager, 30.0, 0.0));
     assert!(evaluate_and_shed_memory(&manager, 0.0, 6.0));
 }
+
+#[tokio::test]
+async fn test_compact_kv_cache_varlink() {
+    use runtimed_daemon::varlink::methods::runtime1::Runtime1Handler;
+    use std::sync::Arc;
+    let tmp = tempfile::tempdir().unwrap();
+    let manager = Arc::new(runtimed_core::model::ModelManager::new(tmp.path()));
+    let handler = Runtime1Handler::new(manager);
+    let reply = handler
+        .handle_call("io.syntrop.Runtime1.CompactKvCache", None)
+        .await;
+    assert!(reply.is_some());
+    let rep = reply.unwrap();
+    assert!(rep.error.is_none());
+    assert_eq!(rep.parameters.unwrap()["freed_bytes"], 0);
+}
+

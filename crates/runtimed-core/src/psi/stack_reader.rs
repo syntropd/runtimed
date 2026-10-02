@@ -32,6 +32,7 @@ impl StackPsiReader {
             let n = match read(&fd, &mut buf) {
                 Ok(0) => break,
                 Ok(bytes) => bytes,
+                Err(rustix::io::Errno::INTR) => continue,
                 Err(_) => break,
             };
             parser.feed(&buf[..n], &mut values);

@@ -5,7 +5,7 @@
 //! without Python dependencies.
 
 use crate::error::{ModelError, Result};
-use image::{GenericImageView, GrayImage, Luma};
+use image::{GenericImageView, GrayImage};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -55,9 +55,7 @@ pub struct Florence2Result {
 pub struct Florence2Engine;
 
 impl Florence2Engine {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self }
 
     /// Ground visual elements in the provided raw image bytes (PNG, JPEG, etc.).
     pub fn ground(&self, image_bytes: &[u8], task: Florence2Task) -> Result<Florence2Result> {
@@ -71,22 +69,19 @@ impl Florence2Engine {
         let gray = dyn_img.to_luma8();
         let regions = self.extract_regions(&gray, width, height, task);
 
-        let text = match task {
+        let (text, result_regions) = match task {
             Florence2Task::Ocr => {
                 let lines: Vec<String> = regions.iter().map(|r| r.label.clone()).collect();
-                if lines.is_empty() { "Detected visual content".to_string() } else { lines.join("\n") }
+                let txt = if lines.is_empty() { "Detected visual content".into() } else { lines.join("\n") };
+                (txt, Vec::new())
             }
             Florence2Task::OcrWithRegion => {
-                regions.iter().map(|r| format!("{}: [{}, {}, {}, {}]", r.label, r.x1, r.y1, r.x2, r.y2)).collect::<Vec<_>>().join("\n")
+                let txt = regions.iter().map(|r| format!("{}: [{}, {}, {}, {}]", r.label, r.x1, r.y1, r.x2, r.y2)).collect::<Vec<_>>().join("\n");
+                (txt, regions)
             }
             Florence2Task::GroundedCaption => {
-                format!("Desktop UI container with {} active interactive elements", regions.len())
+                (format!("Desktop UI container with {} active interactive elements", regions.len()), regions)
             }
-        };
-
-        let result_regions = match task {
-            Florence2Task::Ocr => Vec::new(),
-            Florence2Task::OcrWithRegion | Florence2Task::GroundedCaption => regions,
         };
 
         Ok(Florence2Result { text, regions: result_regions })
@@ -184,8 +179,11 @@ impl Florence2Engine {
                 parse_coord(parts[idx + 3]),
             ) {
                 let remainder = parts[idx + 3];
-                let label = remainder.find('>').map(|pos| remainder[pos + 1..].trim().to_string()).unwrap_or_else(|| "element".into());
-                result.push(BoundingBox { label, x1, y1, x2, y2 });
+                let label = remainder.find('>').map(|p| remainder[p + 1..].trim())
+                    .filter(|s| !s.is_empty()).unwrap_or("element").to_string();
+                let (nx1, nx2) = (x1.min(x2).min(1000), x1.max(x2).min(1000));
+                let (ny1, ny2) = (y1.min(y2).min(1000), y1.max(y2).min(1000));
+                result.push(BoundingBox { label, x1: nx1, y1: ny1, x2: nx2, y2: ny2 });
                 idx += 4;
             } else {
                 idx += 1;
@@ -202,22 +200,14 @@ mod tests {
     use image::{ExtendedColorType, ImageEncoder, Rgb, RgbImage};
 
     fn create_test_image(w: u32, h: u32) -> Vec<u8> {
-        let mut img = RgbImage::new(w, h);
-        for x in 0..w {
-            for y in 0..h {
-                img.put_pixel(x, y, Rgb([255, 255, 255]));
-            }
-        }
-        // Draw high contrast button/text region
-        for x in 20..60 {
-            for y in 20..40 {
+        let mut img = RgbImage::from_pixel(w, h, Rgb([255, 255, 255]));
+        for x in 20..60.min(w) {
+            for y in 20..40.min(h) {
                 img.put_pixel(x, y, Rgb([0, 0, 0]));
             }
         }
         let mut buf = Vec::new();
-        PngEncoder::new(&mut buf)
-            .write_image(img.as_raw(), w, h, ExtendedColorType::Rgb8)
-            .unwrap();
+        PngEncoder::new(&mut buf).write_image(img.as_raw(), w, h, ExtendedColorType::Rgb8).unwrap();
         buf
     }
 
@@ -248,5 +238,13 @@ mod tests {
         assert_eq!(boxes[0].y2, 300);
         assert_eq!(boxes[0].x2, 400);
         assert_eq!(boxes[0].label, "Submit Button");
+
+        let inv = "<loc_800><loc_900><loc_200><loc_100>";
+        let inv_boxes = Florence2Engine::parse_loc_tokens(inv);
+        assert_eq!(inv_boxes[0].x1, 100);
+        assert_eq!(inv_boxes[0].x2, 900);
+        assert_eq!(inv_boxes[0].y1, 200);
+        assert_eq!(inv_boxes[0].y2, 800);
+        assert_eq!(inv_boxes[0].label, "element");
     }
 }

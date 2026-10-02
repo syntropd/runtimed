@@ -156,6 +156,15 @@ Executes 1-step visual generation into an atomically committed PNG file in runti
   - `height` (int): Result image height.
   - `format` (string): Image encoding format ("png").
 
+### 2.11 `GroundVisual`
+Fast CPU OCR and visual bounding box grounding using pure-Rust Florence-2-base.
+- Parameters:
+  - `image_bytes` (string): Base64-encoded PNG/JPEG payload or path to local image file.
+  - `task` (string): Vision-language grounding task: `<OCR>`, `<OCR_WITH_REGION>`, or `<GROUNDED_CAPTION>`.
+- Returns:
+  - `text` (string): Recognized text or grounded caption.
+  - `regions` (`[]BoundingBox`): Detected bounding box coordinates [0..1000] and element labels.
+
 ---
 
 # io.syntrop.Sensory1: Varlink Interface Specification

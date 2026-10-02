@@ -21,6 +21,14 @@ type LoadedModel (
   compute_backend: string
 )
 
+type BoundingBox (
+  label: string,
+  x1: int,
+  y1: int,
+  x2: int,
+  y2: int
+)
+
 type GenerationResult (
   text: string,
   prompt_tokens: int,
@@ -66,6 +74,7 @@ method GenerateMusic(prompt: string, duration_sec: ?int, bpm: ?int) -> (audio_pa
 method GenerateAudio(prompt: string, duration_sec: ?int, bpm: ?int) -> (audio_path: string, sample_rate: int, duration_ms: int)
 method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string, model: ?string, loras: ?[]string, storyboard: ?int, allow_degrade: ?bool) -> (image_path: string, bytes: int, width: int, height: int, format: string, storyboard_path: ?string, manifest_path: ?string, keyframes: ?int)
 method GenerateVideo(prompt: string, frames: ?int, fps: ?int, storyboard: ?int, allow_degrade: ?bool) -> (video_path: string, frames: int, duration_ms: ?int, storyboard_path: ?string, manifest_path: ?string, bytes: ?int, format: ?string, keyframes: ?int)
+method GroundVisual(image_bytes: string, task: string) -> (text: string, regions: []BoundingBox)
 method CompactKvCache() -> (freed_bytes: int)
 
 error ModelNotFound(model: string)

@@ -49,8 +49,14 @@ pub async fn handle_ground_visual(
         }
     };
 
-    let raw_bytes = if Path::new(image_input).is_file() {
-        match std::fs::read(image_input) {
+    let payload = if let Some(idx) = image_input.find(";base64,") {
+        &image_input[idx + 8..]
+    } else {
+        image_input
+    };
+
+    let raw_bytes = if Path::new(payload).is_file() {
+        match std::fs::read(payload) {
             Ok(b) => b,
             Err(e) => {
                 return VarlinkReply::err(
@@ -60,7 +66,7 @@ pub async fn handle_ground_visual(
             }
         }
     } else {
-        match base64::engine::general_purpose::STANDARD.decode(image_input) {
+        match base64::engine::general_purpose::STANDARD.decode(payload) {
             Ok(b) if !b.is_empty() => b,
             Ok(_) => {
                 return VarlinkReply::err(

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "b80b866",
+ "rev": "5f9f662",
  "dirty": false,
  "pages": [
   {
@@ -341,7 +341,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/loader/load_model.rs",
-   "lines": 201,
+   "lines": 202,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -369,7 +369,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/meta.rs",
-   "lines": 75,
+   "lines": 108,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
@@ -550,8 +550,15 @@
    "reach": 5
   },
   {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/ground.rs",
+   "lines": 153,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/mod.rs",
-   "lines": 47,
+   "lines": 51,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -593,7 +600,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 216,
+   "lines": 217,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
@@ -659,14 +666,14 @@
    "lines": 57,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 16
+   "reach": 17
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/server.rs",
    "lines": 242,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 16
+   "reach": 17
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/telemetry/interface.rs",
@@ -1030,7 +1037,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 51
+   "reach": 52
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1208,8 +1215,15 @@
    "reach": 0
   },
   {
+   "path": "./crates/runtimed-model/src/vision/florence2.rs",
+   "lines": 252,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-model/src/vision/mod.rs",
-   "lines": 223,
+   "lines": 225,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

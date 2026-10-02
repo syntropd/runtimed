@@ -18,8 +18,8 @@ candle-core.workspace = true
 image.workspace = true
 libc.workspace = true
 memmap2.workspace = true
-runtimed-gguf = { package = "syntrop-runtimed-gguf", version = "0.5.2", path = "../runtimed-gguf" }
-runtimed-model = { package = "syntrop-runtimed-model", version = "0.5.2", path = "../runtimed-model" }
+runtimed-gguf = { package = "syntrop-runtimed-gguf", version = "0.4.0", path = "../runtimed-gguf" }
+runtimed-model = { package = "syntrop-runtimed-model", version = "0.4.0", path = "../runtimed-model" }
 rustix.workspace = true
 safetensors.workspace = true
 serde.workspace = true

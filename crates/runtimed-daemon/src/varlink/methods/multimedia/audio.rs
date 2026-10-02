@@ -4,6 +4,7 @@
 //! directly to PipeWire (`pw-cat`) or an in-memory buffer.
 
 use crate::varlink::server::protocol::VarlinkReply;
+use base64::Engine as _;
 use runtimed_core::model::ModelManager;
 use runtimed_model::audio::{BufferSink, KokoroConfig, KokoroEngine, PwCatSink};
 use serde_json::{json, Value};
@@ -136,11 +137,16 @@ pub async fn handle_stream_audio_out(
         }
     };
 
-    VarlinkReply::ok(json!({
+    let mut reply_data = json!({
         "bytes_streamed": bytes,
         "sample_rate": 24000,
         "channels": 1,
-    }))
+    });
+    if !buffer_sink.buffer().is_empty() {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(buffer_sink.buffer());
+        reply_data["pcm_base64"] = json!(b64);
+    }
+    VarlinkReply::ok(reply_data)
 }
 
 #[cfg(test)]

@@ -83,7 +83,8 @@ pub fn handle_service_call(method: &str, params: Option<&serde_json::Value>) -> 
             "interfaces": [
                 "org.varlink.service",
                 "io.syntrop.Runtime1",
-                "io.syntrop.Sensory1"
+                "io.syntrop.Sensory1",
+                "io.syntrop.Telemetry1"
             ]
         }))),
         "org.varlink.service.GetInterfaceDescription" => {
@@ -98,6 +99,9 @@ pub fn handle_service_call(method: &str, params: Option<&serde_json::Value>) -> 
                 }))),
                 "io.syntrop.Sensory1" => Some(VarlinkReply::ok(json!({
                     "description": crate::varlink::sensory::IO_SYNTROP_SENSORY1_INTERFACE.trim()
+                }))),
+                "io.syntrop.Telemetry1" => Some(VarlinkReply::ok(json!({
+                    "description": crate::varlink::telemetry::IO_SYNTROP_TELEMETRY1_INTERFACE.trim()
                 }))),
                 _ => Some(VarlinkReply::err(
                     "org.varlink.service.InterfaceNotFound",

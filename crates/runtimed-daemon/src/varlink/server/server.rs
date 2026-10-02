@@ -232,6 +232,10 @@ async fn dispatch_call(call: &VarlinkCall, handler: &Runtime1Handler) -> Varlink
         return reply;
     }
 
+    if let Some(reply) = crate::varlink::telemetry::Telemetry1Handler::new().handle_call(&call.method).await {
+        return reply;
+    }
+
     VarlinkReply::err(
         "org.varlink.service.MethodNotFound",
         Some(serde_json::json!({ "method": call.method })),

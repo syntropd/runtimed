@@ -6,7 +6,6 @@
 //! via `ModelManager::unload_idle(0)` to shed gigabytes of unpinned weights.
 
 use crate::model::ModelManager;
-use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,14 +32,12 @@ pub fn parse_psi_avg10(content: &str, line_prefix: &str) -> Option<f32> {
 }
 
 /// Reads current memory PSI stall percentages (`some`, `full`) from the specified path.
+/// Guarantees zero heap allocations during steady-state ticks.
 pub fn read_memory_psi(path: &Path) -> Option<(f32, f32)> {
-    if !path.exists() {
-        return None;
+    if let Some(vals) = super::stack_reader::StackPsiReader::read_path(path) {
+        return Some((vals.some_avg10, vals.full_avg10));
     }
-    let content = fs::read_to_string(path).ok()?;
-    let some = parse_psi_avg10(&content, "some").unwrap_or(0.0);
-    let full = parse_psi_avg10(&content, "full").unwrap_or(0.0);
-    Some((some, full))
+    None
 }
 
 /// Evaluates memory pressure and triggers proactive eviction if stalled.

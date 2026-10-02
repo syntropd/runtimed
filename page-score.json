@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "a237f37",
+ "rev": "89d266f",
  "dirty": false,
  "pages": [
   {
@@ -194,7 +194,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/speculate_engine.rs",
-   "lines": 105,
+   "lines": 111,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -215,7 +215,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/error.rs",
-   "lines": 72,
+   "lines": 76,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 19
@@ -403,15 +403,36 @@
    "reach": 5
   },
   {
+   "path": "./crates/runtimed-core/src/psi/ebpf.rs",
+   "lines": 129,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-core/src/psi/mod.rs",
-   "lines": 19,
+   "lines": 25,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/psi/monitor.rs",
-   "lines": 116,
+   "lines": 113,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-core/src/psi/stack_reader.rs",
+   "lines": 191,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-core/src/psi/types.rs",
+   "lines": 27,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -446,7 +467,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/sensory/video_capture.rs",
-   "lines": 163,
+   "lines": 174,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -544,14 +565,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 188,
+   "lines": 205,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 7
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 109,
+   "lines": 113,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -565,7 +586,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/mod.rs",
-   "lines": 12,
+   "lines": 14,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -586,7 +607,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/sensory/sensory1.rs",
-   "lines": 176,
+   "lines": 180,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -610,25 +631,46 @@
    "lines": 57,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 12
+   "reach": 13
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/server.rs",
-   "lines": 238,
+   "lines": 242,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 12
+   "reach": 13
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/telemetry/interface.rs",
+   "lines": 26,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/telemetry/mod.rs",
+   "lines": 7,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/telemetry/telemetry1.rs",
+   "lines": 55,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/tests/sensory_test.rs",
-   "lines": 182,
+   "lines": 223,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-daemon/tests/speculative_test.rs",
-   "lines": 133,
+   "lines": 181,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1349,7 +1391,7 @@
   },
   {
    "path": "./qa/unit/src/lib.rs",
-   "lines": 14,
+   "lines": 16,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1364,6 +1406,13 @@
   {
    "path": "./qa/unit/src/model_tests.rs",
    "lines": 159,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./qa/unit/src/telemetry_tests.rs",
+   "lines": 49,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

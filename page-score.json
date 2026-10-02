@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "5f9f662",
+ "rev": "07a1c73",
  "dirty": false,
  "pages": [
   {
@@ -551,7 +551,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/ground.rs",
-   "lines": 153,
+   "lines": 159,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -607,7 +607,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 119,
+   "lines": 128,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -1216,7 +1216,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/vision/florence2.rs",
-   "lines": 252,
+   "lines": 250,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

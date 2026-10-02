@@ -49,6 +49,15 @@ pub async fn handle_generate_video(
     let storyboard = params.get("storyboard").and_then(|v| v.as_u64()).map(|n| n as usize);
     let allow_degrade = params.get("allow_degrade").and_then(|v| v.as_bool()).unwrap_or(false);
 
+    if let Some(sb) = storyboard {
+        if sb == 0 {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.InvalidParameter",
+                Some(json!({ "parameter": "storyboard (must be 1..=32)" })),
+            );
+        }
+    }
+
     let _lease_permit = match runtimed_core::model::LeaseClient::from_env()
         .acquire_with_workload(8 * 1024 * 1024 * 1024, "VideoTemporal")
     {
@@ -179,6 +188,13 @@ mod tests {
     #[tokio::test]
     async fn test_generate_video_missing_prompt() {
         let params = json!({ "frames": 8 });
+        let reply = handle_generate_video(Some(&params), None).await;
+        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_video_storyboard_zero_rejected() {
+        let params = json!({ "prompt": "sea", "storyboard": 0 });
         let reply = handle_generate_video(Some(&params), None).await;
         assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }

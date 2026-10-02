@@ -58,6 +58,14 @@ pub async fn handle_generate_visual(
             Some(json!({ "parameter": "steps (must be 1..=50)" })),
         );
     }
+    if let Some(sb) = storyboard {
+        if sb == 0 {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.InvalidParameter",
+                Some(json!({ "parameter": "storyboard (must be 1..=32)" })),
+            );
+        }
+    }
 
     let _permit = match super::MULTIMEDIA_SEMAPHORE.try_acquire() {
         Ok(p) => p,
@@ -227,5 +235,6 @@ mod tests {
         assert_eq!(handle_generate_visual(Some(&json!({"width": 64})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
         assert_eq!(handle_generate_visual(Some(&json!({"prompt": "t", "width": 0})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
         assert_eq!(handle_generate_visual(Some(&json!({"prompt": "t", "steps": 0})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+        assert_eq!(handle_generate_visual(Some(&json!({"prompt": "t", "storyboard": 0})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }
 }

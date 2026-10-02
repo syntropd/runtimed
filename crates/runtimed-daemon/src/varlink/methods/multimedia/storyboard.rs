@@ -102,7 +102,10 @@ pub async fn render_storyboard_strip(
     sampler: &VisualGenSampler,
     fallback_reason: Option<&str>,
 ) -> Result<StoryboardResult, String> {
-    let keyframe_count = n.clamp(1, 16);
+    if n == 0 {
+        return Err("keyframe count must be at least 1".into());
+    }
+    let keyframe_count = n.clamp(1, 32);
     let lease = VisualComputeLease::new("storyboard-lease");
     let mut images = Vec::with_capacity(keyframe_count);
 
@@ -199,5 +202,18 @@ mod tests {
 
         let _ = tokio::fs::remove_file(story.storyboard_path).await;
         let _ = tokio::fs::remove_file(story.manifest_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_render_storyboard_strip_zero_keyframes_rejected() {
+        let sampler = VisualGenSampler::with_config(VisualGenConfig {
+            default_width: 32,
+            default_height: 32,
+            steps: 1,
+            lora_tags: vec![],
+        });
+        let res = render_storyboard_strip("cyberpunk street", 0, 32, 32, 42, &sampler, None).await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("keyframe count must be at least 1"));
     }
 }

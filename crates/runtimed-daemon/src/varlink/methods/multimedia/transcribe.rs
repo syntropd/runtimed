@@ -192,4 +192,35 @@ mod tests {
         assert_eq!(res["duration_ms"], 1000);
         assert!(!res["text"].as_str().unwrap().is_empty());
     }
+
+    #[tokio::test]
+    async fn test_transcribe_audio_odd_length_pcm() {
+        let samples: Vec<i16> = (0..16000)
+            .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+            .collect();
+        let mut raw = Vec::with_capacity(32001);
+        for s in samples {
+            raw.extend_from_slice(&s.to_le_bytes());
+        }
+        raw.push(0x42);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&raw);
+
+        let params = json!({
+            "pcm_base64": b64,
+            "language": "en"
+        });
+
+        let reply = handle_transcribe_audio(Some(&params), None).await;
+        assert!(reply.error.is_none());
+        let res = reply.parameters.unwrap();
+        assert_eq!(res["language"], "en");
+        assert_eq!(res["duration_ms"], 1000);
+
+        let single_byte = base64::engine::general_purpose::STANDARD.encode([0x42]);
+        let reply_single = handle_transcribe_audio(Some(&json!({ "pcm_base64": single_byte })), None).await;
+        assert_eq!(
+            reply_single.error.as_deref(),
+            Some("io.syntrop.Runtime1.InvalidParameter")
+        );
+    }
 }

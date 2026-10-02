@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "1a3b80c",
+ "rev": "112e404",
  "dirty": true,
  "pages": [
   {
@@ -565,7 +565,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/transcribe.rs",
-   "lines": 138,
+   "lines": 193,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

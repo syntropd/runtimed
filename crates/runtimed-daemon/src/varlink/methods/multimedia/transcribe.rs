@@ -55,14 +55,48 @@ pub async fn handle_transcribe_audio(
         }
     };
 
-    if raw_bytes.len() % 2 != 0 {
+    let pcm_bytes = if raw_bytes.starts_with(b"RIFF")
+        && raw_bytes.len() >= 44
+        && &raw_bytes[8..12] == b"WAVE"
+    {
+        // Strip WAV header: locate the 'data' chunk
+        let mut offset = 12;
+        let mut data_slice = None;
+        while offset + 8 <= raw_bytes.len() {
+            let chunk_id = &raw_bytes[offset..offset + 4];
+            let chunk_size = u32::from_le_bytes([
+                raw_bytes[offset + 4],
+                raw_bytes[offset + 5],
+                raw_bytes[offset + 6],
+                raw_bytes[offset + 7],
+            ]) as usize;
+            offset += 8;
+            if chunk_id == b"data" {
+                let end = (offset + chunk_size).min(raw_bytes.len());
+                data_slice = Some(&raw_bytes[offset..end]);
+                break;
+            }
+            offset += chunk_size;
+        }
+        data_slice.unwrap_or(&raw_bytes[44..])
+    } else {
+        &raw_bytes[..]
+    };
+
+    let pcm_aligned = if pcm_bytes.len() % 2 != 0 {
+        &pcm_bytes[..pcm_bytes.len().saturating_sub(1)]
+    } else {
+        pcm_bytes
+    };
+
+    if pcm_aligned.is_empty() {
         return VarlinkReply::err(
             "io.syntrop.Runtime1.InvalidParameter",
-            Some(json!({ "parameter": "pcm_base64 (unaligned 16-bit PCM bytes)" })),
+            Some(json!({ "parameter": "pcm_base64 (no audio samples)" })),
         );
     }
 
-    let pcm_samples: Vec<i16> = raw_bytes
+    let pcm_samples: Vec<i16> = pcm_aligned
         .chunks_exact(2)
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
         .collect();
@@ -134,5 +168,26 @@ mod tests {
         let bad_b64 = json!({ "pcm_base64": "!!!not_base64!!!" });
         let reply_bad = handle_transcribe_audio(Some(&bad_b64), None).await;
         assert_eq!(reply_bad.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+    }
+
+    #[tokio::test]
+    async fn test_transcribe_audio_wav_container() {
+        let samples: Vec<i16> = (0..16000)
+            .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+            .collect();
+        let wav = runtimed_model::audio::MusicGenEngine::encode_wav(16000, 1, &samples).unwrap();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
+
+        let params = json!({
+            "pcm_base64": b64,
+            "language": "en"
+        });
+
+        let reply = handle_transcribe_audio(Some(&params), None).await;
+        assert!(reply.error.is_none());
+        let res = reply.parameters.unwrap();
+        assert_eq!(res["language"], "en");
+        assert_eq!(res["duration_ms"], 1000);
+        assert!(!res["text"].as_str().unwrap().is_empty());
     }
 }

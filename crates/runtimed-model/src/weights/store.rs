@@ -16,7 +16,7 @@ pub struct Weights {
 }
 
 impl Weights {
-    pub(crate) fn from_parts(dev: Device, store: DType, map: HashMap<String, Tensor>) -> Self {
+    pub fn from_parts(dev: Device, store: DType, map: HashMap<String, Tensor>) -> Self {
         Self { dev, store, map }
     }
 
@@ -173,4 +173,3 @@ mod tests {
         assert_eq!(bytes2, bytes);
     }
 }
-

@@ -121,8 +121,19 @@ impl VisualGenSampler {
         });
 
         // Neural denoising pass with multi-step trajectory if steps > 1
-        if let Some(ref w) = self.weights {
-            let unet = TurboUnet::new(Arc::clone(w));
+        if let Some(ref base_w) = self.weights {
+            let effective_weights = if self.loras.is_empty() {
+                Arc::clone(base_w)
+            } else {
+                let mut cloned = (**base_w).clone();
+                for lora in &self.loras {
+                    if cloned.contains_key(&lora.name) {
+                        let _ = lora.fuse_into_weights(&mut cloned);
+                    }
+                }
+                Arc::new(cloned)
+            };
+            let unet = TurboUnet::new(effective_weights);
             let dev = unet.device();
             let steps = self.cfg.steps.max(1);
 
@@ -225,7 +236,9 @@ mod tests {
 
         let sampler = VisualGenSampler::with_weights(cfg, weights).with_lora(lora);
         let lease = VisualComputeLease::new("active-lease-123");
-        let png = sampler.sample_1step("futuristic city", 64, 64, 999, &lease).unwrap();
+        let png = sampler
+            .sample_1step("futuristic city", 64, 64, 999, &lease)
+            .unwrap();
         assert_eq!(&png[1..4], b"PNG");
     }
 }

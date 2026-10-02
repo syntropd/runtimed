@@ -20,12 +20,20 @@ pub struct LoraMatrixPair {
 impl LoraMatrixPair {
     pub fn new(name: impl Into<String>, a: Tensor, b: Tensor, alpha: f64) -> Result<Self> {
         let name = name.into();
-        let rank = a.dim(0)?;
-        if b.dim(1)? != rank {
+        let (a_dims, b_dims) = (a.dims(), b.dims());
+        if a_dims.len() != 2 || b_dims.len() != 2 {
             return Err(ModelError::Shape {
                 name: name.clone(),
-                expected: vec![b.dim(0)?, rank],
-                got: vec![b.dim(0)?, b.dim(1)?],
+                expected: vec![2],
+                got: vec![a_dims.len(), b_dims.len()],
+            });
+        }
+        let rank = a_dims[0];
+        if b_dims[1] != rank {
+            return Err(ModelError::Shape {
+                name: name.clone(),
+                expected: vec![b_dims[0], rank],
+                got: b_dims.to_vec(),
             });
         }
         Ok(Self {
@@ -111,6 +119,29 @@ mod tests {
         let a = Tensor::zeros((2, 4), candle_core::DType::F32, &dev).unwrap();
         let b = Tensor::zeros((4, 3), candle_core::DType::F32, &dev).unwrap();
         // rank mismatch (a rank 2 vs b rank 3)
-        assert!(LoraMatrixPair::new("bad", a, b, 1.0).is_err());
+        assert!(LoraMatrixPair::new("bad", a, b.clone(), 1.0).is_err());
+
+        // non-2D tensor
+        let a_1d = Tensor::zeros(4, candle_core::DType::F32, &dev).unwrap();
+        assert!(LoraMatrixPair::new("bad_1d", a_1d, b, 1.0).is_err());
+    }
+
+    #[test]
+    fn test_lora_fuse_into_weights() {
+        let dev = Device::Cpu;
+        let mut map = std::collections::HashMap::new();
+        let w0 = Tensor::from_vec(vec![1.0f32, 0.0, 0.0, 1.0], (2, 2), &dev).unwrap();
+        map.insert("linear.weight".to_string(), w0);
+        let mut weights = Weights::from_parts(dev.clone(), candle_core::DType::F32, map);
+
+        let a = Tensor::ones((1, 2), candle_core::DType::F32, &dev).unwrap();
+        let b = Tensor::ones((2, 1), candle_core::DType::F32, &dev).unwrap();
+        let lora = LoraMatrixPair::new("linear.weight", a, b, 1.0).unwrap();
+
+        lora.fuse_into_weights(&mut weights).unwrap();
+        let fused = weights.get("linear.weight").unwrap();
+        let vals = fused.flatten_all().unwrap().to_vec1::<f32>().unwrap();
+        // W0 + 1.0 * [[1, 1], [1, 1]] = [[2, 1], [1, 2]]
+        assert_eq!(vals, vec![2.0, 1.0, 1.0, 2.0]);
     }
 }

@@ -14,7 +14,9 @@ pub struct FlowMatchingScheduler {
 
 impl FlowMatchingScheduler {
     pub fn new(steps: usize) -> Self {
-        Self { steps: steps.max(1) }
+        Self {
+            steps: steps.max(1),
+        }
     }
 
     /// Discrete timesteps progression from 1.0 down to 0.0.
@@ -53,8 +55,18 @@ impl EulerAncestralScheduler {
 
     /// Step Euler-Ancestral trajectory: calculates updated latents.
     pub fn step(&self, latents: &Tensor, denoised: &Tensor, step_idx: usize) -> Result<Tensor> {
+        if step_idx + 1 >= self.sigmas.len() {
+            return Err(crate::error::ModelError::Config(format!(
+                "step_idx {step_idx} out of bounds for sigmas length {}",
+                self.sigmas.len()
+            )));
+        }
         let sigma_t = self.sigmas[step_idx];
         let sigma_next = self.sigmas[step_idx + 1];
+
+        if sigma_t <= 0.0 || !sigma_t.is_finite() {
+            return Ok(denoised.clone());
+        }
 
         // Derivative d = (x - denoised) / sigma_t
         let diff = (latents - denoised)?;
@@ -110,5 +122,8 @@ mod tests {
         let denoised = Tensor::zeros((1, 4), DType::F32, &dev).unwrap();
         let next_x = scheduler.step(&x, &denoised, 0).unwrap();
         assert_eq!(next_x.dims(), &[1, 4]);
+
+        // Out-of-bounds step_idx check
+        assert!(scheduler.step(&x, &denoised, 10).is_err());
     }
 }

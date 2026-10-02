@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "8dfd067",
+ "rev": "d8830cc",
  "dirty": true,
  "pages": [
   {
@@ -1195,7 +1195,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/lora_fuse.rs",
-   "lines": 116,
+   "lines": 147,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -1216,14 +1216,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/scheduler.rs",
-   "lines": 114,
+   "lines": 129,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/sd_sampler.rs",
-   "lines": 231,
+   "lines": 244,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1265,7 +1265,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/weights/store.rs",
-   "lines": 176,
+   "lines": 175,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -1311,6 +1311,13 @@
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 10
+  },
+  {
+   "path": "./crates/runtimed-model/tests/visual_sampler.rs",
+   "lines": 77,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
   },
   {
    "path": "./qa/edge/src/context_edge.rs",

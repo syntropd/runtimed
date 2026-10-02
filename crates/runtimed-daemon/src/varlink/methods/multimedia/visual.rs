@@ -78,23 +78,24 @@ pub async fn handle_generate_visual(
         );
     }
 
+    let lora_tags = params
+        .get("loras")
+        .and_then(|l| l.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
     let cfg = VisualGenConfig {
         default_width: width,
         default_height: height,
         steps,
+        lora_tags,
     };
 
     // If a model is loaded in manager, bind its weights to VisualGenSampler.
     let sampler = if let Some(mgr) = manager {
         let model_name = params.get("model").and_then(|m| m.as_str()).unwrap_or("sd-turbo");
         if let Some(entry) = mgr.get_entry(model_name) {
-            let weights = {
-                if let Ok(sess) = entry.session.lock() {
-                    Some(Arc::clone(sess.weights()))
-                } else {
-                    None
-                }
-            };
+            let weights = entry.session.lock().ok().map(|s| Arc::clone(s.weights()));
             if let Some(w) = weights {
                 VisualGenSampler::with_weights(cfg, w)
             } else {

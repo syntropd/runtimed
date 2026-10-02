@@ -61,7 +61,7 @@ method GetModelStatus(model: string) -> (status: string, model: ?LoadedModel)
 method UnloadModel(model: string) -> (freed_bytes: int)
 method ListLoadedModels() -> (models: []LoadedModel)
 method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (bytes_streamed: int, sample_rate: int, channels: int)
-method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string) -> (image_path: string, bytes: int, width: int, height: int, format: string)
+method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string, model: ?string, loras: ?[]string) -> (image_path: string, bytes: int, width: int, height: int, format: string)
 method CompactKvCache() -> (freed_bytes: int)
 
 error ModelNotFound(model: string)

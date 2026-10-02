@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "d4e0c31",
- "dirty": false,
+ "rev": "8dfd067",
+ "dirty": true,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -558,7 +558,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/visual.rs",
-   "lines": 242,
+   "lines": 243,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -981,7 +981,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 44
+   "reach": 47
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1030,7 +1030,7 @@
    "lines": 249,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 5
+   "reach": 6
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
@@ -1187,6 +1187,20 @@
    "reach": 1
   },
   {
+   "path": "./crates/runtimed-model/src/visual_gen/flux_dit.rs",
+   "lines": 141,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/visual_gen/lora_fuse.rs",
+   "lines": 116,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
    "path": "./crates/runtimed-model/src/visual_gen/memfd_target.rs",
    "lines": 60,
    "bin_bytes": null,
@@ -1195,14 +1209,21 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/mod.rs",
-   "lines": 25,
+   "lines": 28,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
+   "path": "./crates/runtimed-model/src/visual_gen/scheduler.rs",
+   "lines": 114,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
    "path": "./crates/runtimed-model/src/visual_gen/sd_sampler.rs",
-   "lines": 234,
+   "lines": 231,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1282,7 +1303,7 @@
    "lines": 73,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 0
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/tests/vision.rs",

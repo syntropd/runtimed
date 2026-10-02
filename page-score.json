@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "9e74875",
- "dirty": true,
+ "rev": "9c2e48c",
+ "dirty": false,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -565,28 +565,28 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/storyboard.rs",
-   "lines": 203,
+   "lines": 219,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/transcribe.rs",
-   "lines": 193,
+   "lines": 195,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/video.rs",
-   "lines": 185,
+   "lines": 201,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/visual.rs",
-   "lines": 231,
+   "lines": 240,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -887,7 +887,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/audio/vad_segmenter.rs",
-   "lines": 184,
+   "lines": 186,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1279,7 +1279,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/sd_sampler.rs",
-   "lines": 244,
+   "lines": 246,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1377,7 +1377,7 @@
   },
   {
    "path": "./crates/runtimed-model/tests/visual_sampler.rs",
-   "lines": 77,
+   "lines": 79,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

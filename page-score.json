@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "112e404",
+ "rev": "9e74875",
  "dirty": true,
  "pages": [
   {
@@ -215,7 +215,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/error.rs",
-   "lines": 76,
+   "lines": 80,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 19
@@ -278,7 +278,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/client.rs",
-   "lines": 127,
+   "lines": 146,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
@@ -376,7 +376,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/mod.rs",
-   "lines": 25,
+   "lines": 26,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -544,14 +544,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/audio.rs",
-   "lines": 192,
+   "lines": 217,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 5
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/mod.rs",
-   "lines": 39,
+   "lines": 47,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -559,6 +559,13 @@
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/music.rs",
    "lines": 153,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/storyboard.rs",
+   "lines": 203,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -572,17 +579,17 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/video.rs",
-   "lines": 155,
+   "lines": 185,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/visual.rs",
-   "lines": 243,
+   "lines": 231,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 3
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
@@ -593,7 +600,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 118,
+   "lines": 119,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

@@ -18,6 +18,7 @@ pub mod resolve;
 pub mod stage_loader;
 pub mod tokenizer;
 
+pub use admit_lease::LeaseClient;
 pub use cas::fetch_model_fd;
 pub use loader::ModelManager;
 pub use meta::{EngineEntry, LoadedModel};

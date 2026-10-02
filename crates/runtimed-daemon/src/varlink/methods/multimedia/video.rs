@@ -2,10 +2,9 @@
 //!
 //! Generates short-form video clips (MP4) from prompts via pure-Rust Video DiT diffusion.
 
-use super::visual::resolve_runtime_dir;
 use crate::varlink::server::protocol::VarlinkReply;
 use runtimed_core::model::ModelManager;
-use runtimed_model::visual_gen::{VideoDit, VideoDitConfig};
+use runtimed_model::visual_gen::{VideoDit, VideoDitConfig, VisualGenConfig, VisualGenSampler};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -35,17 +34,74 @@ pub async fn handle_generate_video(
         }
     };
 
-    let frames = params
-        .get("frames")
-        .and_then(|f| f.as_u64())
-        .unwrap_or(16)
-        .clamp(1, 120) as usize;
+    let _permit = match super::MULTIMEDIA_SEMAPHORE.try_acquire() {
+        Ok(p) => p,
+        Err(_) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.Overloaded",
+                Some(json!({ "reason": "multimedia concurrency permit exhausted" })),
+            )
+        }
+    };
 
-    let fps = params
-        .get("fps")
-        .and_then(|f| f.as_u64())
-        .unwrap_or(8)
-        .clamp(1, 60) as u32;
+    let frames = params.get("frames").and_then(|f| f.as_u64()).unwrap_or(16).clamp(1, 120) as usize;
+    let fps = params.get("fps").and_then(|f| f.as_u64()).unwrap_or(8).clamp(1, 60) as u32;
+    let storyboard = params.get("storyboard").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let allow_degrade = params.get("allow_degrade").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let _lease_permit = match runtimed_core::model::LeaseClient::from_env()
+        .acquire_with_workload(8 * 1024 * 1024 * 1024, "VideoTemporal")
+    {
+        Ok(p) => p,
+        Err(runtimed_core::RuntimedError::HardwareIncompatible(err_params)) => {
+            if allow_degrade || storyboard.is_some() {
+                let n = storyboard.unwrap_or(frames.clamp(3, 8));
+                let cfg = VisualGenConfig { default_width: 512, default_height: 512, steps: 1, lora_tags: vec![] };
+                let sampler = VisualGenSampler::with_config(cfg);
+                match super::render_storyboard_strip(prompt, n, 512, 512, 0, &sampler, Some("cpu-only-degrade")).await {
+                    Ok(res) => {
+                        return VarlinkReply::ok(json!({
+                            "video_path": res.storyboard_path.to_string_lossy(),
+                            "storyboard_path": res.storyboard_path.to_string_lossy(),
+                            "manifest_path": res.manifest_path.to_string_lossy(),
+                            "bytes": res.bytes,
+                            "frames": res.keyframes,
+                            "format": "png_strip",
+                            "keyframes": res.keyframes,
+                        }));
+                    }
+                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e }))),
+                }
+            } else {
+                return VarlinkReply::err("io.syntrop.Inference1.HardwareIncompatible", Some(err_params));
+            }
+        }
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": format!("lease allocation failed: {e}") })),
+            );
+        }
+    };
+
+    if let Some(count) = storyboard {
+        let cfg = VisualGenConfig { default_width: 512, default_height: 512, steps: 1, lora_tags: vec![] };
+        let sampler = VisualGenSampler::with_config(cfg);
+        match super::render_storyboard_strip(prompt, count, 512, 512, 0, &sampler, None).await {
+            Ok(res) => {
+                return VarlinkReply::ok(json!({
+                    "video_path": res.storyboard_path.to_string_lossy(),
+                    "storyboard_path": res.storyboard_path.to_string_lossy(),
+                    "manifest_path": res.manifest_path.to_string_lossy(),
+                    "bytes": res.bytes,
+                    "frames": res.keyframes,
+                    "format": "png_strip",
+                    "keyframes": res.keyframes,
+                }));
+            }
+            Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e }))),
+        }
+    }
 
     let dit = if let Some(mgr) = manager {
         let model_name = params.get("model").and_then(|m| m.as_str()).unwrap_or("videodit");
@@ -73,20 +129,7 @@ pub async fn handle_generate_video(
         }
     };
 
-    // Atomic write to $RUNTIME_DIR/syntrop/video_gen/{id}.mp4
-    let out_dir = resolve_runtime_dir().await.join("syntrop").join("video_gen");
-    if let Err(e) = tokio::fs::create_dir_all(&out_dir).await {
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to create output dir: {e}") })),
-        );
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(&out_dir, std::fs::Permissions::from_mode(0o775)).await;
-    }
-
+    let out_dir = super::resolve_runtime_dir().await.join("syntrop").join("video_gen");
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let count = COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
@@ -94,28 +137,15 @@ pub async fn handle_generate_video(
         .unwrap_or_default()
         .as_nanos();
     let id = format!("{nanos:016x}_{count}");
-    let final_path = out_dir.join(format!("{id}.mp4"));
-    let tmp_path = out_dir.join(format!(".{id}.tmp"));
-
-    if let Err(e) = tokio::fs::write(&tmp_path, &mp4_bytes).await {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to write temporary video file: {e}") })),
-        );
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644)).await;
-    }
-    if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to commit video file: {e}") })),
-        );
-    }
+    let final_path = match super::write_atomic_file(&out_dir, &id, "mp4", &mp4_bytes).await {
+        Ok(p) => p,
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": e })),
+            );
+        }
+    };
 
     let duration_ms = (frames as u64 * 1000) / (fps as u64);
     VarlinkReply::ok(json!({

@@ -35,6 +35,31 @@ pub async fn handle_stream_audio_out(
         }
     };
 
+    let _permit = match super::MULTIMEDIA_SEMAPHORE.try_acquire() {
+        Ok(p) => p,
+        Err(_) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.Overloaded",
+                Some(json!({ "reason": "multimedia concurrency permit exhausted" })),
+            )
+        }
+    };
+
+    let _lease_permit = match runtimed_core::model::LeaseClient::from_env()
+        .acquire_with_workload(256 * 1024 * 1024, "AudioSpeech")
+    {
+        Ok(p) => p,
+        Err(runtimed_core::RuntimedError::HardwareIncompatible(err_params)) => {
+            return VarlinkReply::err("io.syntrop.Inference1.HardwareIncompatible", Some(err_params));
+        }
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": format!("lease allocation failed: {e}") })),
+            );
+        }
+    };
+
     let voice = params.get("voice").and_then(|v| v.as_str());
     let sink_type = params.get("sink_type").and_then(|s| s.as_str()).unwrap_or("auto");
 

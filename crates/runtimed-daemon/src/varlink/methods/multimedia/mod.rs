@@ -8,15 +8,23 @@
 
 pub mod audio;
 pub mod music;
+pub mod storyboard;
 pub mod transcribe;
 pub mod video;
 pub mod visual;
 
 pub use audio::handle_stream_audio_out;
 pub use music::handle_generate_music;
+pub use storyboard::{render_storyboard_strip, resolve_runtime_dir, stitch_keyframe_images, write_atomic_file};
 pub use transcribe::handle_transcribe_audio;
 pub use video::handle_generate_video;
 pub use visual::handle_generate_visual;
+
+use std::sync::{Arc, LazyLock};
+use tokio::sync::Semaphore;
+
+pub(crate) static MULTIMEDIA_SEMAPHORE: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(8)));
 
 #[cfg(test)]
 mod tests {

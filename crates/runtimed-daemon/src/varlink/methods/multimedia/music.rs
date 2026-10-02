@@ -2,7 +2,7 @@
 //!
 //! Generates 32kHz stereo WAV music tracks from descriptive prompts with bounded VRAM.
 
-use super::visual::resolve_runtime_dir;
+use super::resolve_runtime_dir;
 use crate::varlink::server::protocol::VarlinkReply;
 use runtimed_core::model::ModelManager;
 use runtimed_model::audio::{MusicGenConfig, MusicGenEngine};

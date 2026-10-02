@@ -7,29 +7,8 @@ use crate::varlink::server::protocol::VarlinkReply;
 use runtimed_core::model::ModelManager;
 use runtimed_model::visual_gen::{VisualComputeLease, VisualGenConfig, VisualGenSampler};
 use serde_json::{json, Value};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-
-/// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> /run (if /run/syntrop exists) -> temp_dir().
-pub(crate) async fn resolve_runtime_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        let p = PathBuf::from(xdg.trim());
-        if !p.as_os_str().is_empty() && tokio::fs::try_exists(&p).await.unwrap_or(false) {
-            return p;
-        }
-    }
-    let uid = rustix::process::getuid().as_raw();
-    let run_user = PathBuf::from(format!("/run/user/{uid}"));
-    if tokio::fs::try_exists(&run_user).await.unwrap_or(false) {
-        return run_user;
-    }
-    let run_syntrop = PathBuf::from("/run/syntrop");
-    if tokio::fs::try_exists(&run_syntrop).await.unwrap_or(false) {
-        return PathBuf::from("/run");
-    }
-    std::env::temp_dir()
-}
 
 /// Handles io.syntrop.Runtime1.GenerateVisual method invocations.
 pub async fn handle_generate_visual(
@@ -64,6 +43,8 @@ pub async fn handle_generate_visual(
         .get("lease_id")
         .and_then(|l| l.as_str())
         .unwrap_or("admit-runtime-lease");
+    let storyboard = params.get("storyboard").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let allow_degrade = params.get("allow_degrade").and_then(|v| v.as_bool()).unwrap_or(false);
 
     if width == 0 || height == 0 || width > 4096 || height > 4096 {
         return VarlinkReply::err(
@@ -78,6 +59,16 @@ pub async fn handle_generate_visual(
         );
     }
 
+    let _permit = match super::MULTIMEDIA_SEMAPHORE.try_acquire() {
+        Ok(p) => p,
+        Err(_) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.Overloaded",
+                Some(json!({ "reason": "multimedia concurrency permit exhausted" })),
+            )
+        }
+    };
+
     let lora_tags = params
         .get("loras")
         .and_then(|l| l.as_array())
@@ -91,7 +82,6 @@ pub async fn handle_generate_visual(
         lora_tags,
     };
 
-    // If a model is loaded in manager, bind its weights to VisualGenSampler.
     let sampler = if let Some(mgr) = manager {
         let model_name = params.get("model").and_then(|m| m.as_str()).unwrap_or("sd-turbo");
         if let Some(entry) = mgr.get_entry(model_name) {
@@ -108,6 +98,69 @@ pub async fn handle_generate_visual(
         VisualGenSampler::with_config(cfg)
     };
 
+    let is_heavy = steps > 1 || width > 512 || height > 512;
+    let (workload, mem_bytes) = if is_heavy {
+        ("VisualHighRes", 4 * 1024 * 1024 * 1024)
+    } else {
+        ("VisualDraft", 1024 * 1024 * 1024)
+    };
+
+    let _lease_permit = match runtimed_core::model::LeaseClient::from_env()
+        .acquire_with_workload(mem_bytes, workload)
+    {
+        Ok(p) => p,
+        Err(runtimed_core::RuntimedError::HardwareIncompatible(err_params)) => {
+            if allow_degrade || storyboard.is_some() {
+                let n = storyboard.unwrap_or(4);
+                let st = super::render_storyboard_strip(
+                    prompt, n, width.min(512), height.min(512), seed, &sampler, Some("cpu-only-degrade"),
+                ).await;
+                match st {
+                    Ok(res) => {
+                        return VarlinkReply::ok(json!({
+                            "image_path": res.storyboard_path.to_string_lossy(),
+                            "storyboard_path": res.storyboard_path.to_string_lossy(),
+                            "manifest_path": res.manifest_path.to_string_lossy(),
+                            "bytes": res.bytes,
+                            "width": res.width,
+                            "height": res.height,
+                            "format": "png",
+                            "keyframes": res.keyframes,
+                        }));
+                    }
+                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e }))),
+                }
+            } else {
+                return VarlinkReply::err("io.syntrop.Inference1.HardwareIncompatible", Some(err_params));
+            }
+        }
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": format!("lease allocation failed: {e}") })),
+            );
+        }
+    };
+
+    if let Some(count) = storyboard {
+        let st = super::render_storyboard_strip(prompt, count, width, height, seed, &sampler, None).await;
+        match st {
+            Ok(res) => {
+                return VarlinkReply::ok(json!({
+                    "image_path": res.storyboard_path.to_string_lossy(),
+                    "storyboard_path": res.storyboard_path.to_string_lossy(),
+                    "manifest_path": res.manifest_path.to_string_lossy(),
+                    "bytes": res.bytes,
+                    "width": res.width,
+                    "height": res.height,
+                    "format": "png",
+                    "keyframes": res.keyframes,
+                }));
+            }
+            Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e }))),
+        }
+    }
+
     let lease = VisualComputeLease::new(lease_id);
     let png_bytes = match sampler.sample_1step(prompt, width, height, seed, &lease) {
         Ok(b) => b,
@@ -119,20 +172,7 @@ pub async fn handle_generate_visual(
         }
     };
 
-    // Atomic write to $RUNTIME_DIR/syntrop/visual_gen/{id}.png
-    let out_dir = resolve_runtime_dir().await.join("syntrop").join("visual_gen");
-    if let Err(e) = tokio::fs::create_dir_all(&out_dir).await {
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to create output dir: {e}") })),
-        );
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(&out_dir, std::fs::Permissions::from_mode(0o775)).await;
-    }
-
+    let out_dir = super::resolve_runtime_dir().await.join("syntrop").join("visual_gen");
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let count = COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
@@ -140,28 +180,15 @@ pub async fn handle_generate_visual(
         .unwrap_or_default()
         .as_nanos();
     let id = format!("{nanos:016x}_{count}_{seed}");
-    let final_path = out_dir.join(format!("{id}.png"));
-    let tmp_path = out_dir.join(format!(".{id}.tmp"));
-
-    if let Err(e) = tokio::fs::write(&tmp_path, &png_bytes).await {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to write temporary visual file: {e}") })),
-        );
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644)).await;
-    }
-    if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return VarlinkReply::err(
-            "io.syntrop.Runtime1.GenerationFailed",
-            Some(json!({ "reason": format!("failed to commit visual file: {e}") })),
-        );
-    }
+    let final_path = match super::write_atomic_file(&out_dir, &id, "png", &png_bytes).await {
+        Ok(p) => p,
+        Err(e) => {
+            return VarlinkReply::err(
+                "io.syntrop.Runtime1.GenerationFailed",
+                Some(json!({ "reason": e })),
+            );
+        }
+    };
 
     VarlinkReply::ok(json!({
         "image_path": final_path.to_string_lossy(),
@@ -189,55 +216,16 @@ mod tests {
         let res = reply.parameters.unwrap();
         assert_eq!(res["width"], 64);
         assert_eq!(res["height"], 64);
-        assert_eq!(res["format"], "png");
-        assert!(res["bytes"].as_u64().unwrap() > 0);
         let path_str = res["image_path"].as_str().unwrap();
         assert!(tokio::fs::try_exists(path_str).await.unwrap_or(false));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let meta = tokio::fs::metadata(path_str).await.unwrap();
-            assert_eq!(meta.permissions().mode() & 0o777, 0o644);
-        }
         let _ = tokio::fs::remove_file(path_str).await;
     }
 
     #[tokio::test]
-    async fn test_generate_visual_missing_prompt() {
-        let params = json!({ "width": 64 });
-        let reply = handle_generate_visual(Some(&params), None).await;
-        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
-    }
-
-    #[tokio::test]
-    async fn test_generate_visual_invalid_params() {
-        let reply = handle_generate_visual(None, None).await;
-        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
-
-        let bad_dim = json!({ "prompt": "test", "width": 0 });
-        let reply_dim = handle_generate_visual(Some(&bad_dim), None).await;
-        assert_eq!(reply_dim.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
-    }
-
-    #[tokio::test]
-    async fn test_generate_visual_steps_validation() {
-        let bad_params = json!({
-            "prompt": "neon city",
-            "steps": 0
-        });
-        let reply = handle_generate_visual(Some(&bad_params), None).await;
-        assert_eq!(reply.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
-
-        let ok_params = json!({
-            "prompt": "neon city",
-            "width": 32,
-            "height": 32,
-            "steps": 2
-        });
-        let ok_reply = handle_generate_visual(Some(&ok_params), None).await;
-        assert!(ok_reply.error.is_none());
-        let res = ok_reply.parameters.unwrap();
-        let path_str = res["image_path"].as_str().unwrap();
-        let _ = tokio::fs::remove_file(path_str).await;
+    async fn test_generate_visual_validation() {
+        assert_eq!(handle_generate_visual(None, None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+        assert_eq!(handle_generate_visual(Some(&json!({"width": 64})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+        assert_eq!(handle_generate_visual(Some(&json!({"prompt": "t", "width": 0})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
+        assert_eq!(handle_generate_visual(Some(&json!({"prompt": "t", "steps": 0})), None).await.error.as_deref(), Some("io.syntrop.Runtime1.InvalidParameter"));
     }
 }

@@ -41,7 +41,17 @@ impl LeaseClient {
     /// explicit refusal and must fail the load. The granted permit
     /// keeps its connection open: closing it early lets inferenced
     /// reclaim the lease as orphaned.
+    /// Ask inferenced for `memory_bytes` on any plane.
     pub fn acquire(&self, memory_bytes: u64) -> Result<Option<LeasePermit>, RuntimedError> {
+        self.acquire_with_workload(memory_bytes, "TextPrimary")
+    }
+
+    /// Ask inferenced for `memory_bytes` on any plane with workload classification.
+    pub fn acquire_with_workload(
+        &self,
+        memory_bytes: u64,
+        workload: &str,
+    ) -> Result<Option<LeasePermit>, RuntimedError> {
         if !self.socket.exists() {
             return Ok(None);
         }
@@ -54,8 +64,13 @@ impl LeaseClient {
         };
         let reply = match Self::transact(
             &mut stream,
-            "io.systemd.inferenced1.AcquireLease",
-            json!({"priority": "Interactive", "memory_bytes": memory_bytes, "pid": std::process::id()}),
+            "io.syntrop.Inference1.AcquireLease",
+            json!({
+                "priority": "Interactive",
+                "memory_bytes": memory_bytes,
+                "pid": std::process::id(),
+                "workload": workload,
+            }),
         ) {
             Ok(v) => v,
             Err(e) => {
@@ -64,6 +79,10 @@ impl LeaseClient {
             }
         };
         if let Some(err) = reply.get("error").and_then(|e| e.as_str()) {
+            if err == "io.syntrop.Inference1.HardwareIncompatible" || err.ends_with("HardwareIncompatible") {
+                let params = reply.get("parameters").cloned().unwrap_or(json!({}));
+                return Err(RuntimedError::HardwareIncompatible(params));
+            }
             let detail = reply
                 .get("parameters")
                 .and_then(|p| p.get("error"))

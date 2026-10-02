@@ -64,8 +64,8 @@ method StreamAudioOut(text: string, voice: ?string, sink_type: ?string) -> (byte
 method TranscribeAudio(pcm_base64: string, language: ?string) -> (text: string, language: string, duration_ms: int)
 method GenerateMusic(prompt: string, duration_sec: ?int, bpm: ?int) -> (audio_path: string, sample_rate: int, duration_ms: int)
 method GenerateAudio(prompt: string, duration_sec: ?int, bpm: ?int) -> (audio_path: string, sample_rate: int, duration_ms: int)
-method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string, model: ?string, loras: ?[]string) -> (image_path: string, bytes: int, width: int, height: int, format: string)
-method GenerateVideo(prompt: string, frames: ?int, fps: ?int) -> (video_path: string, frames: int, duration_ms: int)
+method GenerateVisual(prompt: string, width: ?int, height: ?int, seed: ?int, steps: ?int, lease_id: ?string, model: ?string, loras: ?[]string, storyboard: ?int, allow_degrade: ?bool) -> (image_path: string, bytes: int, width: int, height: int, format: string, storyboard_path: ?string, manifest_path: ?string, keyframes: ?int)
+method GenerateVideo(prompt: string, frames: ?int, fps: ?int, storyboard: ?int, allow_degrade: ?bool) -> (video_path: string, frames: int, duration_ms: ?int, storyboard_path: ?string, manifest_path: ?string, bytes: ?int, format: ?string, keyframes: ?int)
 method CompactKvCache() -> (freed_bytes: int)
 
 error ModelNotFound(model: string)
@@ -75,6 +75,7 @@ error InvalidParameter(parameter: string)
 error Overloaded(reason: string)
 error Shutdown(reason: string)
 error PermissionDenied()
+error HardwareIncompatible(deficit: string, estimated_cpu_latency_secs: float, suggested_alternatives: []string)
 "#;
 
 /// Handles standard org.varlink.service method dispatches.

@@ -26,6 +26,10 @@ pub enum RuntimedError {
     #[error("Hardware compute allocation failure: {0}")]
     HardwareAllocation(String),
 
+    /// Workload requires hardware capabilities not present on host.
+    #[error("Hardware incompatible: {0}")]
+    HardwareIncompatible(serde_json::Value),
+
     /// Token sampling or generation loop encountered an unrecoverable failure.
     #[error("Generation execution failed: {0}")]
     GenerationFailed(String),

@@ -6,10 +6,14 @@
 
 pub mod ephemeral;
 pub mod pool_patches;
+pub mod temporal_window;
 pub mod vpre;
 pub mod vresize;
 
 pub use crate::vision::pool_patches::pool_patches;
+pub use crate::vision::temporal_window::{
+    TemporalFrame, TemporalFrameWindow, TemporalWindowConfig,
+};
 pub use crate::vision::vpre::{prepare, PreparedImage};
 
 use crate::error::{ModelError, Result};

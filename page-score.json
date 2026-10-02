@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "d8830cc",
+ "rev": "6126ffc",
  "dirty": true,
  "pages": [
   {
@@ -547,32 +547,53 @@
    "lines": 186,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 3
+   "reach": 5
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/mod.rs",
-   "lines": 24,
+   "lines": 39,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/music.rs",
+   "lines": 153,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/transcribe.rs",
+   "lines": 138,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/video.rs",
+   "lines": 155,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/multimedia/visual.rs",
    "lines": 243,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 3
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 212,
+   "lines": 216,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 114,
+   "lines": 118,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -631,14 +652,14 @@
    "lines": 57,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 13
+   "reach": 16
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/server.rs",
    "lines": 242,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 13
+   "reach": 16
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/telemetry/interface.rs",
@@ -831,10 +852,17 @@
   },
   {
    "path": "./crates/runtimed-model/src/audio/mod.rs",
-   "lines": 25,
+   "lines": 43,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/audio/music_gen.rs",
+   "lines": 194,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/audio/pcm_sink.rs",
@@ -846,6 +874,20 @@
   {
    "path": "./crates/runtimed-model/src/audio/tts_engine.rs",
    "lines": 177,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/audio/vad_segmenter.rs",
+   "lines": 184,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/audio/whisper_net.rs",
+   "lines": 219,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -981,7 +1023,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 47
+   "reach": 51
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1030,7 +1072,7 @@
    "lines": 249,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 6
+   "reach": 8
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
@@ -1160,7 +1202,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/vision/mod.rs",
-   "lines": 219,
+   "lines": 223,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1171,6 +1213,13 @@
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/vision/temporal_window.rs",
+   "lines": 215,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/vision/vpre.rs",
@@ -1209,7 +1258,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/mod.rs",
-   "lines": 28,
+   "lines": 33,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1234,6 +1283,13 @@
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/visual_gen/video_dit.rs",
+   "lines": 228,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/weights/load_gguf.rs",

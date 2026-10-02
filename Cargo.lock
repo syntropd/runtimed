@@ -1978,6 +1978,7 @@ name = "syntrop-runtimed"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "libc",
  "rustix 0.38.44",
  "serde",

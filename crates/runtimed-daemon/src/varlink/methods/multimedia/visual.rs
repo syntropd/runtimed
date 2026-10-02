@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Resolve runtime storage directory: $XDG_RUNTIME_DIR -> /run/user/<uid> -> /run (if /run/syntrop exists) -> temp_dir().
-async fn resolve_runtime_dir() -> PathBuf {
+pub(crate) async fn resolve_runtime_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         let p = PathBuf::from(xdg.trim());
         if !p.as_os_str().is_empty() && tokio::fs::try_exists(&p).await.unwrap_or(false) {

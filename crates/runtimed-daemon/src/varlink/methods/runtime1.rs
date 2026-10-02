@@ -44,7 +44,11 @@ impl Runtime1Handler {
             "io.syntrop.Runtime1.ListLoadedModels" => Some(self.handle_list_loaded_models()),
             "io.syntrop.Runtime1.Decide" => Some(self.handle_decide(params).await),
             "io.syntrop.Runtime1.StreamAudioOut" => Some(super::multimedia::handle_stream_audio_out(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.TranscribeAudio" => Some(super::multimedia::handle_transcribe_audio(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.GenerateMusic" => Some(super::multimedia::handle_generate_music(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.GenerateAudio" => Some(super::multimedia::handle_generate_music(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.GenerateVisual" => Some(super::multimedia::handle_generate_visual(params, Some(&self.model_manager)).await),
+            "io.syntrop.Runtime1.GenerateVideo" => Some(super::multimedia::handle_generate_video(params, Some(&self.model_manager)).await),
             "io.syntrop.Runtime1.CompactKvCache" => Some(self.handle_compact_kv_cache()),
             _ => None,
         }

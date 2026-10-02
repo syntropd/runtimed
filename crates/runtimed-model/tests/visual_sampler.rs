@@ -52,8 +52,10 @@ fn test_sampler_multistep_and_lora_hooks() {
     map.insert("linear.weight".into(), w0);
     let weights = Arc::new(Weights::from_parts(dev.clone(), DType::F32, map));
 
-    let mut cfg = VisualGenConfig::default();
-    cfg.steps = 4;
+    let cfg = VisualGenConfig {
+        steps: 4,
+        ..Default::default()
+    };
     let a = Tensor::ones((2, 4), DType::F32, &dev).expect("tensor a");
     let b = Tensor::ones((4, 2), DType::F32, &dev).expect("tensor b");
     let lora = LoraMatrixPair::new("linear.weight", a, b, 1.0).expect("lora");

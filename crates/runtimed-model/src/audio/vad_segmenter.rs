@@ -156,9 +156,11 @@ mod tests {
 
     #[test]
     fn test_vad_speech_detection_and_flush() {
-        let mut cfg = VadConfig::default();
-        cfg.speech_pad_frames = 2;
-        cfg.silence_timeout_frames = 3;
+        let cfg = VadConfig {
+            speech_pad_frames: 2,
+            silence_timeout_frames: 3,
+            ..Default::default()
+        };
         let mut vad = VadSegmenter::new(cfg);
 
         let speech_frame: Vec<i16> = (0..480)

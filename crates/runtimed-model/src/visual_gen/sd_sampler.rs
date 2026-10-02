@@ -228,8 +228,10 @@ mod tests {
     fn test_sampler_multistep_and_lora_hooks() {
         let dev = Device::Cpu;
         let weights = Arc::new(Weights::from_parts(dev.clone(), DType::F32, HashMap::new()));
-        let mut cfg = VisualGenConfig::default();
-        cfg.steps = 4;
+        let cfg = VisualGenConfig {
+            steps: 4,
+            ..Default::default()
+        };
         let a = Tensor::ones((2, 4), DType::F32, &dev).unwrap();
         let b = Tensor::ones((4, 2), DType::F32, &dev).unwrap();
         let lora = LoraMatrixPair::new("test", a, b, 1.0).unwrap();

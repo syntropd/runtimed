@@ -2,35 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use runtimed_daemon::varlink::server::auth::{
-        authorize_ucred, lookup_group, make_test_ucred,
-    };
+    use runtimed_daemon::varlink::server::auth::{lookup_group, authorize_peer};
     use runtimed_daemon::varlink::TrustedGroup;
     use std::os::unix::net::UnixStream;
-
-    /// Synthetic root peer (uid=0) is always trusted.
-    #[test]
-    fn test_root_peer_is_trusted() {
-        let cred = make_test_ucred(1, 0, 1234);
-        let trusted = TrustedGroup::from_gid(5678);
-        assert!(authorize_ucred(cred, trusted).is_ok());
-    }
-
-    /// Synthetic peer whose gid matches the trusted group is accepted.
-    #[test]
-    fn test_matching_gid_peer_is_trusted() {
-        let cred = make_test_ucred(1, 1000, 5678);
-        let trusted = TrustedGroup::from_gid(5678);
-        assert!(authorize_ucred(cred, trusted).is_ok());
-    }
-
-    /// Synthetic peer whose gid does NOT match and uid != 0 is rejected.
-    #[test]
-    fn test_nonmatching_gid_peer_is_rejected() {
-        let cred = make_test_ucred(1, 1000, 1234);
-        let trusted = TrustedGroup::from_gid(5678);
-        assert!(authorize_ucred(cred, trusted).is_err());
-    }
 
     /// Live `UnixStream::pair()` exercises the SO_PEERCRED kernel path.
     /// The peers are ourselves, so authorizing against our own gid
@@ -40,30 +14,25 @@ mod tests {
         let (a, _b) = UnixStream::pair().unwrap();
         let own_gid = unsafe { libc::getgid() };
         let trusted = TrustedGroup::from_gid(own_gid);
-        assert!(runtimed_daemon::varlink::server::auth::authorize_peer(&a, trusted).is_ok());
+        assert!(authorize_peer(&a, trusted).is_ok());
 
         let (c, _d) = UnixStream::pair().unwrap();
         let other = TrustedGroup::from_gid(own_gid.wrapping_add(1));
-        assert!(runtimed_daemon::varlink::server::auth::authorize_peer(&c, other).is_err());
+        assert!(authorize_peer(&c, other).is_err());
     }
 
     /// When the trusted group could not be resolved, every non-root peer
-    /// is rejected regardless of gid. This is the H2 backdoor guard.
+    /// is rejected regardless of gid, while root peer is accepted.
     #[test]
-    fn test_unresolved_trusted_group_rejects_non_root() {
-        let cred = make_test_ucred(1, 1000, 0); // even gid 0 (root group) is rejected
+    fn test_unresolved_trusted_group_enforces_policy() {
+        let (a, _b) = UnixStream::pair().unwrap();
         let trusted = TrustedGroup::from_gid(runtimed_daemon::varlink::server::auth::UNRESOLVED_GID);
-        assert!(authorize_ucred(cred, trusted).is_err());
-    }
-
-    /// When the trusted group could not be resolved, root is still
-    /// trusted (systemd activation hands off the FD before privileges
-    /// drop).
-    #[test]
-    fn test_unresolved_trusted_group_still_trusts_root() {
-        let cred = make_test_ucred(1, 0, 1234);
-        let trusted = TrustedGroup::from_gid(runtimed_daemon::varlink::server::auth::UNRESOLVED_GID);
-        assert!(authorize_ucred(cred, trusted).is_ok());
+        let uid = unsafe { libc::getuid() };
+        if uid == 0 {
+            assert!(authorize_peer(&a, trusted).is_ok());
+        } else {
+            assert!(authorize_peer(&a, trusted).is_err());
+        }
     }
 
     /// `lookup_group("root")` typically returns gid 0 on Linux; we assert

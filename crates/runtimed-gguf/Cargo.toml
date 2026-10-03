@@ -6,10 +6,15 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Zero-ML-dependency GGUF parser, dequantizer, and weight registry for syntrop-runtimed"
+autotests = false
 
 [lib]
 name = "runtimed_gguf"
 path = "src/lib.rs"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration.rs"
 
 [dependencies]
 hex.workspace = true

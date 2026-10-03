@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "07a1c73",
+ "rev": "31bc9f5",
  "dirty": false,
  "pages": [
   {
@@ -649,7 +649,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/auth.rs",
-   "lines": 218,
+   "lines": 173,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -697,14 +697,21 @@
    "reach": 1
   },
   {
-   "path": "./crates/runtimed-daemon/tests/sensory_test.rs",
+   "path": "./crates/runtimed-daemon/tests/integration.rs",
+   "lines": 4,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-daemon/tests/integration/sensory_test.rs",
    "lines": 223,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-daemon/tests/speculative_test.rs",
+   "path": "./crates/runtimed-daemon/tests/integration/speculative_test.rs",
    "lines": 181,
    "bin_bytes": null,
    "heat_pct": null,
@@ -816,15 +823,22 @@
    "reach": 1
   },
   {
-   "path": "./crates/runtimed-gguf/tests/bpe_vectors.rs",
+   "path": "./crates/runtimed-gguf/tests/integration/bpe_vectors.rs",
    "lines": 65,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-gguf/tests/real_file.rs",
+   "path": "./crates/runtimed-gguf/tests/integration/real_file.rs",
    "lines": 98,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-gguf/tests/integration.rs",
+   "lines": 4,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1348,49 +1362,56 @@
    "reach": 3
   },
   {
-   "path": "./crates/runtimed-model/tests/arch_config.rs",
+   "path": "./crates/runtimed-model/tests/integration/arch_config.rs",
    "lines": 117,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-model/tests/differential.rs",
+   "path": "./crates/runtimed-model/tests/integration/differential.rs",
    "lines": 188,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-model/tests/lora.rs",
+   "path": "./crates/runtimed-model/tests/integration/lora.rs",
    "lines": 164,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
   },
   {
-   "path": "./crates/runtimed-model/tests/safetensors_load.rs",
+   "path": "./crates/runtimed-model/tests/integration.rs",
+   "lines": 14,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/tests/integration/safetensors_load.rs",
    "lines": 171,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-model/tests/storage.rs",
+   "path": "./crates/runtimed-model/tests/integration/storage.rs",
    "lines": 73,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
-   "path": "./crates/runtimed-model/tests/vision.rs",
+   "path": "./crates/runtimed-model/tests/integration/vision.rs",
    "lines": 178,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 10
   },
   {
-   "path": "./crates/runtimed-model/tests/visual_sampler.rs",
+   "path": "./crates/runtimed-model/tests/integration/visual_sampler.rs",
    "lines": 79,
    "bin_bytes": null,
    "heat_pct": null,
@@ -1454,7 +1475,7 @@
   },
   {
    "path": "./qa/unit/src/daemon/peercred_tests.rs",
-   "lines": 91,
+   "lines": 60,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

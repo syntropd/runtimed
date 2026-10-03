@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_explicit_rejection_fails_closed() {
         let fake = FakeInferenced::start(|_| {
-            json!({"error": "io.systemd.inferenced1.ResourceExhaustion",
+            json!({"error": "io.syntrop.Inference1.ResourceExhaustion",
                    "parameters": {"error": "plane full"}})
         });
         let client = LeaseClient::new(&fake.path);

@@ -16,6 +16,7 @@ pub async fn exec_generate(
     top_p: f32,
     seed: u64,
     image: Option<&str>,
+    backend: Option<&str>,
     as_json: bool,
 ) -> Result<()> {
     let mut params = json!({
@@ -31,6 +32,9 @@ pub async fn exec_generate(
         use base64::Engine as _;
         let bytes = std::fs::read(path)?;
         params["image"] = json!(base64::engine::general_purpose::STANDARD.encode(bytes));
+    }
+    if let Some(b) = backend {
+        params["backend"] = json!(b);
     }
 
     let res = client
@@ -73,7 +77,7 @@ mod tests {
     async fn renders_human_and_json() {
         for as_json in [false, true] {
             let (client, server) = fake_daemon(vec![reply()]);
-            exec_generate(&client, "m", "p", 8, 0.0, 0, 1.0, 0, None, as_json)
+            exec_generate(&client, "m", "p", 8, 0.0, 0, 1.0, 0, None, None, as_json)
                 .await
                 .expect("renders");
             server.await.expect("server done");
@@ -85,7 +89,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("runtimectl-test-{}-img.bin", std::process::id()));
         std::fs::write(&path, [1u8, 2, 3, 4]).unwrap();
         let (client, server) = fake_daemon(vec![reply()]);
-        exec_generate(&client, "m", "p", 8, 0.0, 0, 1.0, 0, Some(path.to_str().unwrap()), true)
+        exec_generate(&client, "m", "p", 8, 0.0, 0, 1.0, 0, Some(path.to_str().unwrap()), None, true)
             .await
             .expect("renders with image");
         server.await.expect("server done");

@@ -61,6 +61,10 @@ pub enum Commands {
         /// Image file (PNG/JPEG) for multimodal generation.
         #[arg(long = "image")]
         image: Option<String>,
+
+        /// Target compute backend (e.g. "cuda:0", "cuda:1", "cpu").
+        #[arg(short = 'b', long = "backend")]
+        backend: Option<String>,
     },
 
     /// Attach a vision projector to a loaded model.
@@ -144,6 +148,7 @@ mod tests {
                 top_p,
                 seed,
                 image,
+                backend,
             } => {
                 assert_eq!(prompt, "hello");
                 assert_eq!(model, "qwen2.5-coder-7b");
@@ -153,6 +158,7 @@ mod tests {
                 assert_eq!(top_p, 1.0);
                 assert_eq!(seed, 0);
                 assert_eq!(image, None);
+                assert_eq!(backend, None);
             }
             other => panic!("expected Generate, got {other:?}"),
         }

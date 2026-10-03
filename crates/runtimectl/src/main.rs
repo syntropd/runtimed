@@ -21,8 +21,9 @@ async fn main() -> Result<()> {
             top_p,
             seed,
             image,
+            backend,
         } => {
-            exec_generate(&client, &model, &prompt, max_tokens, temperature, top_k, top_p, seed, image.as_deref(), cli.json).await?;
+            exec_generate(&client, &model, &prompt, max_tokens, temperature, top_k, top_p, seed, image.as_deref(), backend.as_deref(), cli.json).await?;
         }
         Commands::AttachVision { model, mmproj } => {
             exec_attach_vision(&client, &model, &mmproj, cli.json).await?;

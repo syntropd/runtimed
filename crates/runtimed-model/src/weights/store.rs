@@ -43,8 +43,14 @@ impl Weights {
         }
     }
 
+    pub fn get_raw(&self, name: &str) -> Result<&Tensor> {
+        self.map
+            .get(name)
+            .ok_or_else(|| ModelError::MissingWeight(name.to_string()))
+    }
+
     pub fn linear(&self, x: &Tensor, name: &str) -> Result<Tensor> {
-        let w = self.get(name)?;
+        let w = self.get_raw(name)?;
         let wt = w.t()?;
         let in_dim = wt.dim(0)?;
         let out_dim = wt.dim(1)?;
@@ -64,7 +70,17 @@ impl Weights {
             });
         }
         let rows: usize = dims[..dims.len() - 1].iter().product();
-        let y = x.reshape((rows, in_dim))?.matmul(&wt)?;
+        let x_cast = if x.dtype() != wt.dtype() {
+            x.to_dtype(wt.dtype())?
+        } else {
+            x.clone()
+        };
+        let y = x_cast.reshape((rows, in_dim))?.matmul(&wt)?;
+        let y = if y.dtype() != x.dtype() {
+            y.to_dtype(x.dtype())?
+        } else {
+            y
+        };
         let mut out_shape = dims[..dims.len() - 1].to_vec();
         out_shape.push(out_dim);
         Ok(y.reshape(out_shape)?)
@@ -73,7 +89,15 @@ impl Weights {
     pub fn linear_bias(&self, x: &Tensor, name: &str, bias: Option<&str>) -> Result<Tensor> {
         let y = self.linear(x, name)?;
         match bias {
-            Some(b) => Ok(y.broadcast_add(&self.get(b)?)?),
+            Some(b) => {
+                let bias_t = self.get(b)?;
+                let bias_cast = if bias_t.dtype() != y.dtype() {
+                    bias_t.to_dtype(y.dtype())?
+                } else {
+                    bias_t
+                };
+                Ok(y.broadcast_add(&bias_cast)?)
+            }
             None => Ok(y),
         }
     }

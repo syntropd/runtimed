@@ -179,12 +179,17 @@ impl Session {
             Kind::Gemma4(c) => gemma4::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
         };
         let out_weight = if self.w.contains_key("output.weight") {
-            self.w.get("output.weight")?
+            self.w.get_raw("output.weight")?
         } else {
-            self.w.get("token_embd.weight")?
+            self.w.get_raw("token_embd.weight")?
         };
         let idx = Tensor::from_vec(candidate_ids.to_vec(), candidate_ids.len(), self.w.device())?;
         let w_c = out_weight.index_select(&idx, 0)?;
+        let w_c = if w_c.dtype() != h_n.dtype() {
+            w_c.to_dtype(h_n.dtype())?
+        } else {
+            w_c
+        };
         let mut logits = h_n.matmul(&w_c.t()?)?;
         if let Some(cap) = self.cfg.final_softcap {
             logits = logits.affine((1.0 / cap) as f64, 0.0)?.tanh()?.affine(cap as f64, 0.0)?;

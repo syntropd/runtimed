@@ -128,9 +128,11 @@ impl Runtime1Handler {
         }
 
         // Loading dequantizes gigabytes; keep it off the async executor.
+        let backend = params.get("backend").and_then(|v| v.as_str()).map(str::to_string);
+        let draft_backend = params.get("speculative_draft_backend").and_then(|v| v.as_str()).map(str::to_string).or_else(|| Some("cpu".to_string()));
         let manager = Arc::clone(&self.model_manager);
         let name_owned = model_name.to_string();
-        let loaded = tokio::task::spawn_blocking(move || manager.load_model(&name_owned, None)).await;
+        let loaded = tokio::task::spawn_blocking(move || manager.load_model(&name_owned, backend.as_deref())).await;
         match loaded {
             Ok(Ok(_)) => {}
             Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e.to_string() }))),
@@ -145,7 +147,7 @@ impl Runtime1Handler {
             Some(ref draft_name) => {
                 let manager = Arc::clone(&self.model_manager);
                 let draft_owned = draft_name.clone();
-                let loaded = tokio::task::spawn_blocking(move || manager.load_model(&draft_owned, None)).await;
+                let loaded = tokio::task::spawn_blocking(move || manager.load_model(&draft_owned, draft_backend.as_deref())).await;
                 match loaded {
                     Ok(Ok(_)) => {}
                     Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft model load failed: {e}") }))),

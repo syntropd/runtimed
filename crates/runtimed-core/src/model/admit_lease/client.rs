@@ -69,6 +69,7 @@ impl LeaseClient {
                 "priority": "Interactive",
                 "memory_bytes": memory_bytes,
                 "pid": std::process::id(),
+                "unit": "runtimed.service",
                 "workload": workload,
             }),
         ) {

@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "bc3cbca",
- "dirty": true,
+ "rev": "da9290d",
+ "dirty": false,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",

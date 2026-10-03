@@ -69,10 +69,12 @@ fn text_prompt_ids(
     prompt: &str,
     add_special: bool,
 ) -> Result<Vec<u32>, RuntimedError> {
-    match tokenizer.as_bpe() {
-        Some(bpe) => chat::text_prompt(bpe, prompt).map_err(|e| RuntimedError::GenerationFailed(e.to_string())),
-        None => tokenizer.encode(prompt, add_special).map_err(Into::into),
+    if let Some(bpe) = tokenizer.as_bpe() {
+        if let Ok(ids) = chat::text_prompt(bpe, prompt) {
+            return Ok(ids);
+        }
     }
+    tokenizer.encode(prompt, add_special).map_err(Into::into)
 }
 
 pub(crate) fn generate<M: TextModel>(

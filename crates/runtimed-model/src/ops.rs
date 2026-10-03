@@ -158,8 +158,8 @@ pub fn attention(
     scale: f32,
 ) -> Result<Tensor> {
     let n_rep = q.dim(1)? / k.dim(1)?;
-    let k = repeat_kv_heads(k, n_rep)?;
-    let v = repeat_kv_heads(v, n_rep)?;
+    let k = repeat_kv_heads(k, n_rep)?.contiguous()?;
+    let v = repeat_kv_heads(v, n_rep)?.contiguous()?;
     let scores = q.matmul(&k.transpose(2, 3)?)?.affine(scale as f64, 0.0)?;
     let scores = scores.broadcast_add(mask)?;
     let probs = softmax_last(&scores)?;

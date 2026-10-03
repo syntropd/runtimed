@@ -3,7 +3,7 @@
 use crate::config::Arch;
 use crate::error::{ModelError, Result};
 use runtimed_gguf::{GgufBpe, GgufFile, MetaValue, Tokenizer};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Tokenizer behind one interface: file-backed or GGUF-embedded BPE.
 #[allow(clippy::large_enum_variant)]
@@ -65,6 +65,17 @@ impl EngineTokenizer {
         file: &GgufFile,
         weights: &Path,
     ) -> Result<(Self, Vec<u32>, bool)> {
+        let resolve_tok_path = |p: &Path| -> PathBuf {
+            let direct = p.with_extension("tokenizer.json");
+            if direct.exists() {
+                direct
+            } else if let Ok(real) = p.canonicalize() {
+                real.with_extension("tokenizer.json")
+            } else {
+                direct
+            }
+        };
+
         match arch {
             Arch::Gemma4 => {
                 let bpe = GgufBpe::from_gguf(file)
@@ -73,8 +84,37 @@ impl EngineTokenizer {
                 let add_special = bpe.wants_bos();
                 Ok((Self::Bpe(bpe), eos, add_special))
             }
+            Arch::Granite | Arch::Phi3 => {
+                let tok_path = resolve_tok_path(weights);
+                if tok_path.exists() {
+                    let tok = Tokenizer::from_file(&tok_path).map_err(|e| {
+                        ModelError::Config(format!("failed to load {}: {e}", tok_path.display()))
+                    })?;
+                    let eos = file
+                        .metadata
+                        .get("tokenizer.ggml.eos_token_id")
+                        .and_then(|v| match v {
+                            MetaValue::U32(id) => Some(*id),
+                            MetaValue::I32(id) => Some(*id as u32),
+                            _ => None,
+                        })
+                        .into_iter()
+                        .collect();
+                    let add_special = matches!(
+                        file.metadata.get("tokenizer.ggml.add_bos_token"),
+                        Some(MetaValue::Bool(true))
+                    );
+                    Ok((Self::File(tok), eos, add_special))
+                } else {
+                    let bpe = GgufBpe::from_gguf(file)
+                        .map_err(|e| ModelError::Config(format!("bpe: {e}")))?;
+                    let eos = bpe.eos_id().into_iter().collect();
+                    let add_special = bpe.wants_bos();
+                    Ok((Self::Bpe(bpe), eos, add_special))
+                }
+            }
             Arch::Qwen2 => {
-                let tok_path = weights.with_extension("tokenizer.json");
+                let tok_path = resolve_tok_path(weights);
                 let tok = Tokenizer::from_file(&tok_path).map_err(|_| {
                     ModelError::Config(format!(
                         "qwen2 needs a sibling tokenizer.json next to {}",
@@ -130,6 +170,8 @@ impl EngineTokenizer {
         let (eos, add_special) = match arch {
             Arch::Gemma4 => (vec![1], true),
             Arch::Qwen2 => (vec![151643, 151645], false),
+            Arch::Granite => (vec![0], false),
+            Arch::Phi3 => (vec![32000, 32007], false),
         };
 
         Ok((Self::File(tok), eos, add_special))

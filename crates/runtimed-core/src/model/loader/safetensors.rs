@@ -21,6 +21,8 @@ pub fn load_safetensors_entry(
     let arch_tag = match cfg.arch {
         runtimed_model::Arch::Qwen2 => "qwen2",
         runtimed_model::Arch::Gemma4 => "gemma4",
+        runtimed_model::Arch::Granite => "granite",
+        runtimed_model::Arch::Phi3 => "phi3",
     };
     let cfg_arc = Arc::new(cfg);
 

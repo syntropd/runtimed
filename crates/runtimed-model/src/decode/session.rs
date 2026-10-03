@@ -6,13 +6,15 @@
 use crate::config::{Arch, ArchConfig};
 use crate::error::{ModelError, Result};
 use crate::weights::Weights;
-use crate::arch::{gemma4, qwen2};
+use crate::arch::{gemma4, granite, phi3, qwen2};
 use candle_core::Tensor;
 use std::sync::Arc;
 
 enum Kind {
     Qwen2(qwen2::Cache),
     Gemma4(gemma4::Cache),
+    Granite(qwen2::Cache),
+    Phi3(qwen2::Cache),
 }
 
 pub struct Session {
@@ -26,6 +28,8 @@ impl Session {
         let kind = match cfg.arch {
             Arch::Qwen2 => Kind::Qwen2(qwen2::Cache::new(cfg.n_layer)),
             Arch::Gemma4 => Kind::Gemma4(gemma4::Cache::new(cfg.n_layer)),
+            Arch::Granite => Kind::Granite(qwen2::Cache::new(cfg.n_layer)),
+            Arch::Phi3 => Kind::Phi3(qwen2::Cache::new(cfg.n_layer)),
         };
         Ok(Self { cfg, w, kind })
     }
@@ -57,14 +61,11 @@ impl Session {
         let cfg = match config_path {
             Some(cp) => ArchConfig::from_hf_file(cp)?,
             None => {
-                let sibling = weights_path.with_extension("config.json");
-                if sibling.exists() {
-                    ArchConfig::from_hf_file(&sibling)?
-                } else if let Some(parent_cfg) = weights_path.parent().map(|p| p.join("config.json")).filter(|p| p.exists()) {
-                    ArchConfig::from_hf_file(&parent_cfg)?
-                } else {
-                    return Err(ModelError::Config(format!("missing config.json for {}", weights_path.display())));
-                }
+                let p = weights_path.with_extension("config.json");
+                let alt = weights_path.parent().map(|d| d.join("config.json"));
+                let cp = [Some(p), alt].into_iter().flatten().find(|p| p.exists())
+                    .ok_or_else(|| ModelError::Config(format!("missing config for {}", weights_path.display())))?;
+                ArchConfig::from_hf_file(&cp)?
             }
         };
         let w = Arc::new(Weights::load_safetensors(weights_path, dev)?);
@@ -99,7 +100,7 @@ impl Session {
 
     pub fn reset(&mut self) {
         match &mut self.kind {
-            Kind::Qwen2(c) => c.reset(),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.reset(),
             Kind::Gemma4(c) => c.reset(),
         }
     }
@@ -107,7 +108,7 @@ impl Session {
     /// Roll back internal KV cache to target_len tokens for speculative decoding.
     pub fn truncate(&mut self, target_len: usize) {
         match &mut self.kind {
-            Kind::Qwen2(c) => c.truncate(target_len),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.truncate(target_len),
             Kind::Gemma4(c) => c.truncate(target_len),
         }
     }
@@ -115,7 +116,7 @@ impl Session {
     /// Spill up to `count` resident accelerator KV layers to host CPU RAM.
     pub fn spill_layers(&mut self, count: usize) -> Result<usize> {
         match &mut self.kind {
-            Kind::Qwen2(c) => c.spill_layers(count),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.spill_layers(count),
             Kind::Gemma4(c) => c.spill_layers(count),
         }
     }
@@ -124,7 +125,7 @@ impl Session {
     pub fn prefetch_layers(&mut self, count: usize) -> Result<usize> {
         let dev = self.device().clone();
         match &mut self.kind {
-            Kind::Qwen2(c) => c.prefetch_layers(&dev, count),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.prefetch_layers(&dev, count),
             Kind::Gemma4(c) => c.prefetch_layers(&dev, count),
         }
     }
@@ -134,7 +135,7 @@ impl Session {
         let dev = self.device().clone();
         match &mut self.kind {
             Kind::Gemma4(c) => c.splice_kv(kv_layers, &dev),
-            Kind::Qwen2(_) => Err(ModelError::Config("visual KV splicing unsupported for Qwen2".into())),
+            _ => Err(ModelError::Config("visual KV splicing unsupported".into())),
         }
     }
 
@@ -152,6 +153,8 @@ impl Session {
         match &mut self.kind {
             Kind::Qwen2(c) => qwen2::forward(&self.cfg, &self.w, c, ids, q0),
             Kind::Gemma4(c) => gemma4::forward(&self.cfg, &self.w, c, ids, q0),
+            Kind::Granite(c) => granite::forward(&self.cfg, &self.w, c, ids, q0),
+            Kind::Phi3(c) => phi3::forward(&self.cfg, &self.w, c, ids, q0),
         }
     }
 
@@ -166,17 +169,16 @@ impl Session {
 
     /// Score specific candidate tokens against prompt context, returning [1, K] logits.
     pub fn score_candidates(&mut self, prompt_ids: &[u32], candidate_ids: &[u32]) -> Result<Tensor> {
-        if prompt_ids.is_empty() {
-            return Err(ModelError::Config("cannot score an empty prompt".into()));
-        }
-        if candidate_ids.is_empty() {
-            return Err(ModelError::Config("cannot score empty candidates".into()));
+        if prompt_ids.is_empty() || candidate_ids.is_empty() {
+            return Err(ModelError::Config("cannot score empty prompt/candidates".into()));
         }
         Weights::ensure_current(self.w.device())?;
         self.reset();
         let h_n = match &mut self.kind {
             Kind::Qwen2(c) => qwen2::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
             Kind::Gemma4(c) => gemma4::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
+            Kind::Granite(c) => granite::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
+            Kind::Phi3(c) => phi3::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
         };
         let out_weight = if self.w.contains_key("output.weight") {
             self.w.get_raw("output.weight")?
@@ -185,12 +187,11 @@ impl Session {
         };
         let idx = Tensor::from_vec(candidate_ids.to_vec(), candidate_ids.len(), self.w.device())?;
         let w_c = out_weight.index_select(&idx, 0)?;
-        let w_c = if w_c.dtype() != h_n.dtype() {
-            w_c.to_dtype(h_n.dtype())?
-        } else {
-            w_c
-        };
+        let w_c = if w_c.dtype() != h_n.dtype() { w_c.to_dtype(h_n.dtype())? } else { w_c };
         let mut logits = h_n.matmul(&w_c.t()?)?;
+        if let Some(scale) = self.cfg.logit_scale {
+            if scale != 1.0 { logits = logits.affine((1.0 / scale) as f64, 0.0)?; }
+        }
         if let Some(cap) = self.cfg.final_softcap {
             logits = logits.affine((1.0 / cap) as f64, 0.0)?.tanh()?.affine(cap as f64, 0.0)?;
         }
@@ -221,19 +222,11 @@ impl Session {
 
 /// Replace placeholder rows of `[1, T, H]` embeds with soft-token rows.
 fn scatter_soft(embeds: &Tensor, ids: &[u32], soft: &Tensor) -> Result<Tensor> {
-    let t = embeds.dim(1)?;
-    let h = embeds.dim(2)?;
-    if ids.len() != t {
-        return Err(ModelError::Config(format!(
-            "scatter: {} ids vs {t} embed rows",
-            ids.len()
-        )));
+    let (t, h) = (embeds.dim(1)?, embeds.dim(2)?);
+    if ids.len() != t || soft.dim(2)? != h {
+        return Err(ModelError::Config("scatter: dimension mismatch".into()));
     }
-    let s = soft.dim(1)?;
-    if soft.dim(2)? != h {
-        return Err(ModelError::Config("scatter: soft width mismatch".into()));
-    }
-    let mut e = embeds.reshape((t, h))?.to_vec2::<f32>()?;
+    let (s, mut e) = (soft.dim(1)?, embeds.reshape((t, h))?.to_vec2::<f32>()?);
     let rows = soft.reshape((s, h))?.to_vec2::<f32>()?;
     let mut j = 0;
     for (i, &id) in ids.iter().enumerate() {
@@ -246,9 +239,7 @@ fn scatter_soft(embeds: &Tensor, ids: &[u32], soft: &Tensor) -> Result<Tensor> {
         }
     }
     if j != s {
-        return Err(ModelError::Config(format!(
-            "scatter: {j} placeholders filled, {s} soft tokens"
-        )));
+        return Err(ModelError::Config(format!("scatter: {j} placeholders filled, {s} soft tokens")));
     }
     let flat: Vec<f32> = e.into_iter().flatten().collect();
     Ok(Tensor::from_vec(flat, (1, t, h), embeds.device())?)

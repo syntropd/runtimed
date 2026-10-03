@@ -27,6 +27,10 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
         Arch::Qwen2
     } else if model_type.starts_with("gemma") || arch_name.contains("Gemma") {
         Arch::Gemma4
+    } else if model_type.eq_ignore_ascii_case("granite") || arch_name.contains("Granite") {
+        Arch::Granite
+    } else if model_type.starts_with("phi") || arch_name.contains("Phi") {
+        Arch::Phi3
     } else {
         return Err(ModelError::Arch(format!(
             "unknown or unsupported HF architecture: model_type={model_type}, arch={arch_name}"
@@ -81,7 +85,7 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
     let mut layers = Vec::with_capacity(n_layer);
 
     match arch {
-        Arch::Qwen2 => {
+        Arch::Qwen2 | Arch::Granite | Arch::Phi3 => {
             act = Activation::Silu;
             embed_scale = 1.0;
             final_softcap = None;
@@ -146,6 +150,8 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
         sliding_window,
         rope_factors: None,
         ple_dim: 0,
+        residual_scale: None,
+        logit_scale: None,
         layers,
     })
 }

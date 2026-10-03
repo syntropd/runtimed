@@ -4,11 +4,13 @@
 pub enum Arch {
     Qwen2,
     Gemma4,
+    Granite,
+    Phi3,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Activation {
-    /// Qwen2 SwiGLU: `silu(gate) * up`.
+    /// Qwen2 / Granite / Phi3 SwiGLU: `silu(gate) * up`.
     Silu,
     /// Gemma4 GeGLU: `gelu_tanh(gate) * up`.
     GeluTanh,
@@ -42,7 +44,7 @@ pub struct ArchConfig {
     /// True when the file has no `output.weight` (head reuses embeddings).
     pub tie_lm_head: bool,
     pub has_qkv_bias: bool,
-    /// Embedding multiplier: sqrt(hidden) on Gemma4, 1.0 on Qwen2.
+    /// Embedding multiplier: sqrt(hidden) on Gemma4, 1.0 on Qwen2, 12.0 on Granite.
     pub embed_scale: f32,
     /// Final `cap * tanh(x / cap)`; None disables.
     pub final_softcap: Option<f32>,
@@ -53,5 +55,9 @@ pub struct ArchConfig {
     pub rope_factors: Option<Vec<f32>>,
     /// Per-layer embedding dim; 0 disables the PLE path.
     pub ple_dim: usize,
+    /// Residual scale for Granite models (typically 0.22); None disables.
+    pub residual_scale: Option<f32>,
+    /// Final logit divisor for Granite models (typically 16.0); None disables.
+    pub logit_scale: Option<f32>,
     pub layers: Vec<LayerConfig>,
 }

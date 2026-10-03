@@ -54,6 +54,8 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
     let arch = match arch_tag {
         "qwen2" => Arch::Qwen2,
         "gemma4" => Arch::Gemma4,
+        "granite" => Arch::Granite,
+        "phi3" => Arch::Phi3,
         other => return Err(ModelError::Arch(other.to_string())),
     };
     let p = arch_tag; // metadata key prefix matches the arch tag
@@ -95,6 +97,59 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
                     has_kv: true,
                     rope_theta,
                     rope_dim: head_dim,
+                    kv_source: 0,
+                });
+            }
+        }
+        Arch::Granite => {
+            act = Activation::Silu;
+            embed_scale = meta_f32(file, "granite.embedding_scale").unwrap_or(12.0);
+            final_softcap = None;
+            let head_dim = meta_u32(file, "granite.rope.dimension_count")
+                .map(|v| v as usize)
+                .unwrap_or(hidden / n_head);
+            attn_scale = meta_f32(file, "granite.attention.scale").ok();
+            sliding_window = None;
+            rope_factors = None;
+            ple_dim = 0;
+            let ffn = meta_u32(file, "granite.feed_forward_length")? as usize;
+            for _ in 0..n_layer {
+                layers.push(LayerConfig {
+                    n_head,
+                    n_kv,
+                    head_dim,
+                    ffn,
+                    is_swa: false,
+                    has_kv: true,
+                    rope_theta,
+                    rope_dim: head_dim,
+                    kv_source: 0,
+                });
+            }
+        }
+        Arch::Phi3 => {
+            act = Activation::Silu;
+            embed_scale = 1.0;
+            final_softcap = None;
+            let head_dim = hidden / n_head;
+            attn_scale = None;
+            sliding_window = None;
+            rope_factors = None;
+            ple_dim = 0;
+            let ffn = meta_u32(file, "phi3.feed_forward_length")? as usize;
+            let rope_dim = meta_u32(file, "phi3.rope.dimension_count")
+                .map(|v| v as usize)
+                .unwrap_or(head_dim);
+            for _ in 0..n_layer {
+                layers.push(LayerConfig {
+                    n_head,
+                    n_kv,
+                    head_dim,
+                    ffn,
+                    is_swa: false,
+                    has_kv: true,
+                    rope_theta,
+                    rope_dim,
                     kv_source: 0,
                 });
             }
@@ -160,6 +215,8 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
     if tie_lm_head && arch == Arch::Qwen2 {
         return Err(bad("qwen2 without output.weight: refusing to guess"));
     }
+    let residual_scale = meta_f32(file, &format!("{p}.residual_scale")).ok();
+    let logit_scale = meta_f32(file, &format!("{p}.logit_scale")).ok();
     Ok(ArchConfig {
         arch,
         n_layer,
@@ -175,6 +232,8 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
         sliding_window,
         rope_factors,
         ple_dim,
+        residual_scale,
+        logit_scale,
         layers,
     })
 }

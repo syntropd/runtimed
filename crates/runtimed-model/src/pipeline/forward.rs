@@ -185,6 +185,8 @@ mod tests {
             sliding_window: None,
             rope_factors: None,
             ple_dim: 0,
+            residual_scale: None,
+            logit_scale: None,
             layers: vec![],
         };
         let err = forward_pipeline(&[], &cfg, &[1, 2], 0, None).unwrap_err();
@@ -206,7 +208,8 @@ mod tests {
             arch: crate::config::Arch::Qwen2, n_layer: 2, hidden: 64, vocab: 50, eps: 1e-5,
             act: crate::config::Activation::Silu, tie_lm_head: false, has_qkv_bias: false,
             embed_scale: 1.0, final_softcap: None, attn_scale: None, sliding_window: None,
-            rope_factors: None, ple_dim: 0, layers: vec![lc.clone(), lc],
+            rope_factors: None, ple_dim: 0, residual_scale: None, logit_scale: None,
+            layers: vec![lc.clone(), lc],
         };
         let mut map = HashMap::new();
         map.insert("token_embd.weight".into(), Tensor::zeros((50, 64), DType::F32, &Device::Cpu).unwrap());

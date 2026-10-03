@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "da9290d",
- "dirty": false,
+ "rev": "f1118bb",
+ "dirty": true,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -194,7 +194,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/speculate_engine.rs",
-   "lines": 111,
+   "lines": 113,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -341,7 +341,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/loader/load_model.rs",
-   "lines": 202,
+   "lines": 215,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -600,7 +600,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 219,
+   "lines": 238,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
@@ -859,7 +859,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/granite.rs",
-   "lines": 124,
+   "lines": 147,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -880,7 +880,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 168,
+   "lines": 197,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -1027,7 +1027,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/generate.rs",
-   "lines": 157,
+   "lines": 158,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 13
@@ -1041,21 +1041,21 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/sample.rs",
-   "lines": 145,
+   "lines": 170,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 7
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
-   "lines": 246,
+   "lines": 250,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 5
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
-   "lines": 237,
+   "lines": 251,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -1342,7 +1342,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/weights/load_gguf.rs",
-   "lines": 90,
+   "lines": 112,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1370,7 +1370,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/weights/store.rs",
-   "lines": 199,
+   "lines": 232,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3

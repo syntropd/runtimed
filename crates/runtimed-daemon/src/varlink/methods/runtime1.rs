@@ -129,10 +129,44 @@ impl Runtime1Handler {
 
         // Loading dequantizes gigabytes; keep it off the async executor.
         let backend = params.get("backend").and_then(|v| v.as_str()).map(str::to_string);
-        let draft_backend = params.get("speculative_draft_backend").and_then(|v| v.as_str()).map(str::to_string).or_else(|| Some("cpu".to_string()));
+        let draft_backend = params.get("speculative_draft_backend").and_then(|v| v.as_str()).map(str::to_string).or_else(|| {
+            if runtimed_model::Weights::cuda_available(1) {
+                Some("cuda:1".to_string())
+            } else {
+                Some("cpu".to_string())
+            }
+        });
+
+        let draft_entry = match speculative_draft_model {
+            Some(ref draft_name) => {
+                let manager = Arc::clone(&self.model_manager);
+                let draft_owned = draft_name.clone();
+                let draft_b = draft_backend.clone();
+                let loaded = tokio::task::spawn_blocking(move || {
+                    let res = manager.load_model(&draft_owned, draft_b.as_deref());
+                    runtimed_model::Weights::clear_current_thread_context();
+                    res
+                }).await;
+                match loaded {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft model load failed: {e}") }))),
+                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft loader failed: {e}") }))),
+                }
+                match self.model_manager.get_entry(draft_name) {
+                    Some(e) => Some(e),
+                    None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "draft model vanished after load" }))),
+                }
+            }
+            None => None,
+        };
+
         let manager = Arc::clone(&self.model_manager);
         let name_owned = model_name.to_string();
-        let loaded = tokio::task::spawn_blocking(move || manager.load_model(&name_owned, backend.as_deref())).await;
+        let loaded = tokio::task::spawn_blocking(move || {
+            let res = manager.load_model(&name_owned, backend.as_deref());
+            runtimed_model::Weights::clear_current_thread_context();
+            res
+        }).await;
         match loaded {
             Ok(Ok(_)) => {}
             Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e.to_string() }))),
@@ -143,31 +177,14 @@ impl Runtime1Handler {
             None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "model vanished after load" }))),
         };
 
-        let draft_entry = match speculative_draft_model {
-            Some(ref draft_name) => {
-                let manager = Arc::clone(&self.model_manager);
-                let draft_owned = draft_name.clone();
-                let loaded = tokio::task::spawn_blocking(move || manager.load_model(&draft_owned, draft_backend.as_deref())).await;
-                match loaded {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft model load failed: {e}") }))),
-                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft loader failed: {e}") }))),
-                }
-                match self.model_manager.get_entry(draft_name) {
-                    Some(e) => {
-                        if Arc::ptr_eq(&entry, &e) {
-                            return VarlinkReply::err(
-                                "io.syntrop.Runtime1.InvalidParameter",
-                                Some(json!({ "parameter": "speculative_draft_model" })),
-                            );
-                        }
-                        Some(e)
-                    }
-                    None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "draft model vanished after load" }))),
-                }
+        if let Some(ref d) = draft_entry {
+            if Arc::ptr_eq(&entry, d) {
+                return VarlinkReply::err(
+                    "io.syntrop.Runtime1.InvalidParameter",
+                    Some(json!({ "parameter": "speculative_draft_model" })),
+                );
             }
-            None => None,
-        };
+        }
 
         let effective_budget = reasoning_budget.or_else(|| {
             reasoning_effort.and_then(|e| e.to_budget(entry.meta.context_window))
@@ -191,11 +208,13 @@ impl Runtime1Handler {
         // Generation is synchronous CPU work; run it off the async executor.
         let entry_task = Arc::clone(&entry);
         let output = tokio::task::spawn_blocking(move || {
-            if let Some(draft) = draft_entry {
+            let res = if let Some(draft) = draft_entry {
                 generate_speculative(&entry_task, &draft, &request, k_draft)
             } else {
                 generate_tokens(&entry_task, &request)
-            }
+            };
+            runtimed_model::Weights::clear_current_thread_context();
+            res
         }).await;
 
         let output = match output {

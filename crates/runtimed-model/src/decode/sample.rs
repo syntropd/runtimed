@@ -15,18 +15,19 @@ pub fn greedy(logits: &Tensor) -> Result<u32> {
 /// Compute normalized probabilities over a `[vocab]` logit row.
 /// When `temperature <= 0.0`, returns a 1-hot probability vector at the greedy argmax.
 pub fn probs(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32) -> Result<Vec<f32>> {
-    let mut v = logits.to_vec1::<f32>()?;
-    if v.is_empty() {
+    let vocab_size = logits.dim(0).unwrap_or(0);
+    if vocab_size == 0 {
         return Ok(Vec::new());
     }
     if temperature <= 0.0 {
         let best_idx = logits.argmax(0)?.to_scalar::<u32>()? as usize;
-        let mut p = vec![0.0f32; v.len()];
+        let mut p = vec![0.0f32; vocab_size];
         if best_idx < p.len() {
             p[best_idx] = 1.0;
         }
         return Ok(p);
     }
+    let mut v = logits.to_vec1::<f32>()?;
     for x in v.iter_mut() {
         *x /= temperature;
     }
@@ -141,5 +142,29 @@ mod tests {
         let l = Tensor::from_vec(vec![-10.0f32, -10.0, 0.0], 3, &dev).unwrap();
         let id = sample(&l, 1.0, 0, 0.5, || 0.0).unwrap();
         assert_eq!(id, 2);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_greedy() {
+        let dev = Device::new_cuda(0).unwrap();
+        let l = Tensor::from_vec(vec![0.1f32, 5.0, 2.0], 3, &dev).unwrap();
+        assert_eq!(greedy(&l).unwrap(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_multi_greedy() {
+        let dev0 = Device::new_cuda(0).unwrap();
+        let dev1 = Device::new_cuda(1).unwrap();
+        let mut v = vec![0.0f32; 151646];
+        v[19] = 100.0;
+        let l1 = Tensor::from_vec(v.clone(), 151646, &dev1).unwrap();
+        crate::weights::Weights::ensure_current(&dev1).unwrap();
+        assert_eq!(greedy(&l1).unwrap(), 19);
+
+        let l0 = Tensor::from_vec(v.clone(), 151646, &dev0).unwrap();
+        crate::weights::Weights::ensure_current(&dev0).unwrap();
+        assert_eq!(greedy(&l0).unwrap(), 19);
     }
 }

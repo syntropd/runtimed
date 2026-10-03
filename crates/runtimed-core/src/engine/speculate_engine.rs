@@ -44,16 +44,18 @@ pub fn generate_speculative(
         .map_err(|_| RuntimedError::GenerationFailed("draft session lock poisoned".into()))?;
 
     // Prefill both sessions with the prompt
+    let _ = runtimed_model::Weights::ensure_current(target_session.device());
     target_session.reset();
-    draft_session.reset();
     let target_prefill = target_session
         .forward(&prompt_ids, 0)
         .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+    let mut target_head = last_row(&target_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+
+    let _ = runtimed_model::Weights::ensure_current(draft_session.device());
+    draft_session.reset();
     let draft_prefill = draft_session
         .forward(&prompt_ids, 0)
         .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-
-    let mut target_head = last_row(&target_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
     let mut draft_head = last_row(&draft_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
 
     let seed = if request.seed == 0 {

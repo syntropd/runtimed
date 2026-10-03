@@ -70,10 +70,17 @@ impl Weights {
             });
         }
         let rows: usize = dims[..dims.len() - 1].iter().product();
-        let x_cast = if x.dtype() != wt.dtype() {
-            x.to_dtype(wt.dtype())?
+        let dev = wt.device();
+        Self::ensure_current(dev)?;
+        let x_dev = if !x.device().same_device(dev) {
+            x.to_device(dev)?
         } else {
             x.clone()
+        };
+        let x_cast = if x_dev.dtype() != wt.dtype() {
+            x_dev.to_dtype(wt.dtype())?
+        } else {
+            x_dev
         };
         let y = x_cast.reshape((rows, in_dim))?.matmul(&wt)?;
         let y = if y.dtype() != x.dtype() {
@@ -107,7 +114,8 @@ impl Weights {
             .map
             .get(name)
             .ok_or_else(|| ModelError::MissingWeight(name.to_string()))?;
-        let idx = Tensor::from_vec(ids.to_vec(), ids.len(), &self.dev)?;
+        Self::ensure_current(w.device())?;
+        let idx = Tensor::from_vec(ids.to_vec(), ids.len(), w.device())?;
         let rows = w.index_select(&idx, 0)?.unsqueeze(0)?; // [1, seq, hidden]
         if rows.dtype() == DType::F32 {
             Ok(rows)
@@ -116,13 +124,38 @@ impl Weights {
         }
     }
 
+    pub fn clear_current_thread_context() {
+        #[cfg(feature = "cuda")]
+        unsafe {
+            let _ = candle_core::cuda_backend::cudarc::driver::result::ctx::set_current(std::ptr::null_mut());
+        }
+    }
+
+    pub fn cuda_available(ordinal: usize) -> bool {
+        #[cfg(feature = "cuda")]
+        {
+            Device::new_cuda(ordinal).is_ok()
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = ordinal;
+            false
+        }
+    }
+
     pub fn ensure_current(dev: &Device) -> Result<()> {
         #[cfg(feature = "cuda")]
         if let Device::Cuda(d) = dev {
-            d.cuda_stream()
-                .context()
-                .bind_to_thread()
-                .map_err(|e| ModelError::Config(format!("cuda context bind: {e}")))?;
+            let stream = d.cuda_stream();
+            let ctx = stream.context();
+            if match candle_core::cuda_backend::cudarc::driver::result::ctx::get_current() {
+                Ok(Some(curr)) => curr != ctx.cu_ctx(),
+                _ => true,
+            } {
+                let _ = ctx.check_err();
+                let _ = unsafe { candle_core::cuda_backend::cudarc::driver::result::ctx::set_current(ctx.cu_ctx()) };
+                let _ = ctx.bind_to_thread();
+            }
         }
         #[cfg(not(feature = "cuda"))]
         let _ = dev;

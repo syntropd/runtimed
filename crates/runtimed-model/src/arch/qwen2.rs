@@ -23,15 +23,21 @@ impl Cache {
 
     pub fn reset(&mut self) {
         for slot in self.layers.iter_mut() {
-            *slot = None;
+            if let Some((k, v)) = slot.take() {
+                let _ = Weights::ensure_current(k.device());
+                drop((k, v));
+            }
         }
     }
 
     pub fn truncate(&mut self, target_len: usize) {
         for slot in self.layers.iter_mut() {
             if let Some((k, v)) = slot.take() {
+                let _ = Weights::ensure_current(k.device());
                 if target_len > 0 && k.dim(2).map(|l| l > target_len).unwrap_or(false) {
                     if let (Ok(kt), Ok(vt)) = (k.narrow(2, 0, target_len), v.narrow(2, 0, target_len)) {
+                        let kt = kt.contiguous().unwrap_or(kt);
+                        let vt = vt.contiguous().unwrap_or(vt);
                         *slot = Some((kt, vt));
                         continue;
                     }
@@ -82,10 +88,17 @@ fn layer(
 ) -> Result<Tensor> {
     let lc = &cfg.layers[i];
     let pre = format!("blk.{i}");
-    let dev = w.device();
+    let norm_w = w.get_raw(&format!("{pre}.attn_norm.weight"))?;
+    let dev = norm_w.device();
+    Weights::ensure_current(dev)?;
+    let h = if !h.device().same_device(dev) {
+        h.to_device(dev)?
+    } else {
+        h.clone()
+    };
 
     // Attention block.
-    let n = ops::rms_norm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
+    let n = ops::rms_norm(&h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
     let bias = cfg.has_qkv_bias;
     let bq = bias.then(|| format!("{pre}.attn_q.bias"));
     let bk = bias.then(|| format!("{pre}.attn_k.bias"));
@@ -141,7 +154,15 @@ pub fn forward(
     for i in 0..cfg.n_layer {
         h = layer(cfg, w, cache, i, &h, q0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let norm_w = w.get_raw("output_norm.weight")?;
+    let out_dev = norm_w.device();
+    Weights::ensure_current(out_dev)?;
+    let h = if !h.device().same_device(out_dev) {
+        h.to_device(out_dev)?
+    } else {
+        h
+    };
+    let h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     w.linear(&h, "output.weight")
 }
 
@@ -161,7 +182,15 @@ pub fn forward_last_hidden(
     for i in 0..cfg.n_layer {
         h = layer(cfg, w, cache, i, &h, 0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let norm_w = w.get_raw("output_norm.weight")?;
+    let out_dev = norm_w.device();
+    Weights::ensure_current(out_dev)?;
+    let h = if !h.device().same_device(out_dev) {
+        h.to_device(out_dev)?
+    } else {
+        h
+    };
+    let h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let seq = h.dim(1)?;
     let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
     Ok(last)

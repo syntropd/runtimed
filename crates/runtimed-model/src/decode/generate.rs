@@ -31,6 +31,7 @@ impl TextModel for crate::decode::session::Session {
 
 /// Last row `[vocab]` of a `[1, seq, vocab]` logit tensor.
 pub fn last_row(logits: &Tensor) -> Result<Tensor> {
+    crate::weights::Weights::ensure_current(logits.device())?;
     let t = logits.dim(1)?;
     if t == 0 {
         return Err(crate::error::ModelError::Config(

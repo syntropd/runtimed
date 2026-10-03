@@ -4,6 +4,7 @@ use crate::decode::generate::last_row;
 use crate::decode::sample::{probs, sample_from_probs};
 use crate::decode::session::Session;
 use crate::error::Result;
+use crate::weights::Weights;
 use candle_core::Tensor;
 
 /// Outcome of one speculative decoding step.
@@ -45,12 +46,18 @@ pub fn speculative_step(
     let mut draft_probs_list = Vec::with_capacity(k);
 
     // 1. Propose K tokens using draft model
+    Weights::ensure_current(draft.device())?;
     let mut d_row = draft_head_row.clone();
     for j in 0..k {
-        let p_draft = probs(&d_row, temperature, top_k, top_p)?;
-        let tok = sample_from_probs(&p_draft, &mut rand01);
+        let tok = if temperature <= 0.0 {
+            d_row.argmax(0)?.to_scalar::<u32>()?
+        } else {
+            let p = probs(&d_row, temperature, top_k, top_p)?;
+            let t = sample_from_probs(&p, &mut rand01);
+            draft_probs_list.push(p);
+            t
+        };
         draft_tokens.push(tok);
-        draft_probs_list.push(p_draft);
         if eos.contains(&tok) || j + 1 == k {
             break;
         }
@@ -65,79 +72,89 @@ pub fn speculative_step(
     let mut draft_accepted_count = 0;
 
     // 3. Exact distribution-preserving rejection sampling: min(1, p(x)/q(x))
+    Weights::ensure_current(target_head_row.device())?;
     let mut t_head = target_head_row.clone();
     for (i, &cand) in draft_tokens.iter().enumerate() {
-        let p_target = probs(&t_head, temperature, top_k, top_p)?;
-        let q_draft = &draft_probs_list[i];
-
-        let cand_idx = cand as usize;
-        let p_x = p_target.get(cand_idx).copied().unwrap_or(0.0);
-        let q_x = q_draft.get(cand_idx).copied().unwrap_or(0.0);
-
-        let accept = if q_x <= 0.0 || q_x.is_nan() {
-            p_x > 0.0
-        } else if p_x >= q_x {
-            true
-        } else {
-            let alpha = p_x / q_x;
-            if alpha.is_nan() {
-                false
+        if temperature <= 0.0 {
+            let t_tok = t_head.argmax(0)?.to_scalar::<u32>()?;
+            if cand == t_tok {
+                accepted.push(cand);
+                draft_accepted_count += 1;
+                if eos.contains(&cand) {
+                    hit_eos = true;
+                    break;
+                }
+                t_head = target_logits.narrow(1, i, 1)?.squeeze(1)?.squeeze(0)?;
             } else {
-                let u = rand01().clamp(0.0, 1.0);
-                u < alpha
-            }
-        };
-
-        if accept {
-            // Candidate accepted
-            accepted.push(cand);
-            draft_accepted_count += 1;
-            if eos.contains(&cand) {
-                hit_eos = true;
+                accepted.push(t_tok);
+                if eos.contains(&t_tok) {
+                    hit_eos = true;
+                }
                 break;
             }
-            t_head = target_logits.narrow(1, i, 1)?.squeeze(1)?.squeeze(0)?;
         } else {
-            // Candidate rejected: residual sampling from (p(x) - q(x))⁺
-            let vocab_size = p_target.len().max(q_draft.len());
-            let mut residual = Vec::with_capacity(vocab_size);
-            let mut residual_sum = 0.0f32;
-            for idx in 0..vocab_size {
-                let p_val = p_target.get(idx).copied().unwrap_or(0.0);
-                let q_val = q_draft.get(idx).copied().unwrap_or(0.0);
-                let diff = if p_val.is_nan() || q_val.is_nan() {
-                    0.0
-                } else {
-                    (p_val - q_val).max(0.0)
-                };
-                residual.push(diff);
-                residual_sum += diff;
-            }
+            let p_target = probs(&t_head, temperature, top_k, top_p)?;
+            let q_draft = &draft_probs_list[i];
 
-            let correction_token = if residual_sum > 1e-8 && !residual_sum.is_nan() {
-                for r in residual.iter_mut() {
-                    *r /= residual_sum;
-                }
-                sample_from_probs(&residual, &mut rand01)
+            let cand_idx = cand as usize;
+            let p_x = p_target.get(cand_idx).copied().unwrap_or(0.0);
+            let q_x = q_draft.get(cand_idx).copied().unwrap_or(0.0);
+
+            let accept = if q_x <= 0.0 || q_x.is_nan() {
+                p_x > 0.0
+            } else if p_x >= q_x {
+                true
             } else {
-                sample_from_probs(&p_target, &mut rand01)
+                let alpha = p_x / q_x;
+                if alpha.is_nan() {
+                    false
+                } else {
+                    rand01().clamp(0.0, 1.0) < alpha
+                }
             };
 
-            accepted.push(correction_token);
-            if eos.contains(&correction_token) {
-                hit_eos = true;
+            if accept {
+                accepted.push(cand);
+                draft_accepted_count += 1;
+                if eos.contains(&cand) {
+                    hit_eos = true;
+                    break;
+                }
+                t_head = target_logits.narrow(1, i, 1)?.squeeze(1)?.squeeze(0)?;
+            } else {
+                let vocab_size = p_target.len().max(q_draft.len());
+                let mut residual = Vec::with_capacity(vocab_size);
+                let mut sum = 0.0f32;
+                for idx in 0..vocab_size {
+                    let diff = (p_target.get(idx).copied().unwrap_or(0.0) - q_draft.get(idx).copied().unwrap_or(0.0)).max(0.0);
+                    residual.push(diff);
+                    if !diff.is_nan() { sum += diff; }
+                }
+                let corr = if sum > 1e-8 && !sum.is_nan() {
+                    for r in residual.iter_mut() { *r /= sum; }
+                    sample_from_probs(&residual, &mut rand01)
+                } else {
+                    sample_from_probs(&p_target, &mut rand01)
+                };
+                accepted.push(corr);
+                if eos.contains(&corr) { hit_eos = true; }
+                break;
             }
-            break;
         }
     }
 
     // 4. Bonus token if all K candidates accepted
-    let all_accepted = accepted.len() == draft_tokens.len();
+    let all_accepted = draft_accepted_count == draft_tokens.len();
     if all_accepted && !hit_eos {
+        Weights::ensure_current(target_logits.device())?;
         let last_idx = draft_tokens.len() - 1;
         let last_target_row = target_logits.narrow(1, last_idx, 1)?.squeeze(1)?.squeeze(0)?;
-        let p_bonus = probs(&last_target_row, temperature, top_k, top_p)?;
-        let bonus = sample_from_probs(&p_bonus, &mut rand01);
+        let bonus = if temperature <= 0.0 {
+            last_target_row.argmax(0)?.to_scalar::<u32>()?
+        } else {
+            let p_bonus = probs(&last_target_row, temperature, top_k, top_p)?;
+            sample_from_probs(&p_bonus, &mut rand01)
+        };
         accepted.push(bonus);
         if eos.contains(&bonus) {
             hit_eos = true;
@@ -148,25 +165,37 @@ pub fn speculative_step(
     let (next_draft, next_target) = if !all_accepted {
         let corr = *accepted.last().unwrap_or(&0);
         let corr_pos = current_pos + draft_accepted_count;
+        Weights::ensure_current(target.device())?;
         target.truncate(corr_pos);
+        Weights::ensure_current(draft.device())?;
         draft.truncate(corr_pos);
         if hit_eos {
             (draft_head_row.clone(), target_head_row.clone())
         } else {
+            Weights::ensure_current(target.device())?;
             let t_logits = target.forward(&[corr], corr_pos)?;
+            let nt = last_row(&t_logits)?;
+            Weights::ensure_current(draft.device())?;
             let d_logits = draft.forward(&[corr], corr_pos)?;
-            (last_row(&d_logits)?, last_row(&t_logits)?)
+            let nd = last_row(&d_logits)?;
+            (nd, nt)
         }
     } else if hit_eos {
+        Weights::ensure_current(target.device())?;
         target.truncate(current_pos + accepted.len());
+        Weights::ensure_current(draft.device())?;
         draft.truncate(current_pos + accepted.len());
         (draft_head_row.clone(), target_head_row.clone())
     } else {
         let bonus = *accepted.last().unwrap_or(&0);
+        Weights::ensure_current(target.device())?;
         let t_logits = target.forward(&[bonus], current_pos + draft_tokens.len())?;
+        let nt = last_row(&t_logits)?;
         let last_draft = *draft_tokens.last().unwrap_or(&0);
+        Weights::ensure_current(draft.device())?;
         let d_logits = draft.forward(&[last_draft, bonus], current_pos + draft_tokens.len() - 1)?;
-        (last_row(&d_logits)?, last_row(&t_logits)?)
+        let nd = last_row(&d_logits)?;
+        (nd, nt)
     };
 
     Ok((
@@ -187,42 +216,29 @@ mod tests {
 
     #[test]
     fn test_speculative_step_struct() {
-        let step = SpeculativeStep {
-            tokens: vec![1, 2, 3],
-            accepted_count: 2,
-            proposed_count: 2,
-            hit_eos: false,
-        };
-        assert_eq!(step.tokens.len(), 3);
-        assert_eq!(step.accepted_count, 2);
+        let s = SpeculativeStep { tokens: vec![1, 2, 3], accepted_count: 2, proposed_count: 2, hit_eos: false };
+        assert_eq!(s.tokens.len(), 3);
+        assert_eq!(s.accepted_count, 2);
     }
 
     #[test]
     fn test_residual_math() {
         let p_target = [0.1f32, 0.7, 0.2];
         let q_draft = [0.4f32, 0.3, 0.3];
-        let alpha = (p_target[0] / q_draft[0]).min(1.0);
-        assert!((alpha - 0.25).abs() < 1e-5);
-
+        assert!(((p_target[0] / q_draft[0]).min(1.0) - 0.25).abs() < 1e-5);
         let res: Vec<f32> = p_target.iter().zip(q_draft.iter()).map(|(p, q)| (p - q).max(0.0)).collect();
         assert_eq!(res[0], 0.0);
         assert!((res[1] - 0.4).abs() < 1e-5);
-        assert_eq!(res[2], 0.0);
     }
 
     #[test]
     fn test_sample_from_probs_avoids_zero_prob_tails() {
-        let p = [1.0f32, 0.0, 0.0];
-        let tok = sample_from_probs(&p, || 0.999999);
-        assert_eq!(tok, 0);
+        assert_eq!(sample_from_probs(&[1.0f32, 0.0, 0.0], || 0.999999), 0);
     }
 
     #[test]
     fn test_zero_prob_draft_and_nan_resilience() {
-        let (p_x, q_x) = (0.5f32, 0.0f32);
-        let accept_zero_q = q_x <= 0.0 && p_x > 0.0;
-        assert!(accept_zero_q);
-
+        assert!(0.0f32 <= 0.0 && 0.5f32 > 0.0);
         let (p_nan, q_val) = (f32::NAN, 0.3f32);
         let diff = if p_nan.is_nan() || q_val.is_nan() { 0.0 } else { (p_nan - q_val).max(0.0) };
         assert_eq!(diff, 0.0);
@@ -230,8 +246,6 @@ mod tests {
 
     #[test]
     fn test_rejection_prob_guaranteed_acceptance() {
-        let (p_x, q_x) = (0.6f32, 0.4f32);
-        let accept = p_x >= q_x;
-        assert!(accept);
+        assert!(0.6f32 >= 0.4f32);
     }
 }

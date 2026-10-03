@@ -23,16 +23,38 @@ impl Weights {
             Device::Cuda(_) => DType::F16,
             _ => DType::F32,
         };
+        let total_params: u64 = file.tensors.iter().map(|t| t.n_elements as u64).sum();
+        let split_cuda = matches!(dev, Device::Cuda(_))
+            && Self::cuda_available(1)
+            && total_params > 8_000_000_000;
+        let sec_dev = if split_cuda { Device::new_cuda(1).ok() } else { None };
+
+        let max_layer = file.tensors.iter().filter_map(|t| {
+            t.name.strip_prefix("blk.")?.split('.').next()?.parse::<usize>().ok()
+        }).max().map(|m| m + 1).unwrap_or(0);
+        let split_layer = max_layer / 2;
+
         let mut map = HashMap::with_capacity(file.tensors.len());
         for info in &file.tensors {
             if !keep(&info.name) {
                 continue;
             }
+            let target_dev = if let Some(ref s_dev) = sec_dev {
+                let is_second = if let Some(rest) = info.name.strip_prefix("blk.") {
+                    rest.split('.').next().and_then(|s| s.parse::<usize>().ok()).map(|l| l >= split_layer).unwrap_or(false)
+                } else {
+                    info.name.starts_with("output_norm.") || info.name == "output.weight"
+                };
+                if is_second { s_dev } else { dev }
+            } else {
+                dev
+            };
+            Self::ensure_current(target_dev)?;
             let data = file.tensor_f32(info)?;
             let shape: Vec<usize> = info.dims.iter().rev().map(|&d| d as usize).collect();
             let t = Tensor::from_vec(data, shape.as_slice(), &Device::Cpu)?;
             let t = if store == DType::F32 { t } else { t.to_dtype(store)? };
-            let t = t.to_device(dev)?;
+            let t = t.to_device(target_dev)?;
             map.insert(info.name.clone(), t);
         }
         Ok(Self::from_parts(dev.clone(), store, map))

@@ -16,23 +16,6 @@ impl ModelManager {
     pub fn load_model(&self, name: &str, backend: Option<&str>) -> Result<LoadedModel, RuntimedError> {
         self.touch();
         let canonical = name.strip_suffix(":latest").unwrap_or(name);
-        if let Ok(lock) = self.active_models.read() {
-            if let Some(entry) = lock.get(name).or_else(|| lock.get(canonical)) {
-                return Ok(entry.meta.clone());
-            }
-        }
-        let mut lock = self.write_lock()?;
-        if let Some(entry) = lock.get(name).or_else(|| lock.get(canonical)) {
-            return Ok(entry.meta.clone());
-        }
-        let cas_fd = crate::model::cas::fetch_model_fd(name);
-        let path_opt = self.resolve(name);
-        if cas_fd.is_none() && path_opt.is_none() {
-            return Err(RuntimedError::ModelNotFound(name.to_string()));
-        }
-        if let Some(ref p) = path_opt {
-            self.pinned(name, p)?;
-        }
         let env_b = std::env::var("RUNTIMED_BACKEND").ok();
         let backend = backend.or(env_b.as_deref());
         let device = match backend {
@@ -44,6 +27,36 @@ impl ModelManager {
                 )));
             }
         };
+
+        if let Ok(lock) = self.active_models.read() {
+            if let Some(entry) = lock.get(name).or_else(|| lock.get(canonical)) {
+                let same_dev = entry.session.lock().map(|s| s.device().location() == device.location()).unwrap_or(true);
+                if same_dev {
+                    return Ok(entry.meta.clone());
+                }
+            }
+        }
+        let mut lock = self.write_lock()?;
+        if let Some(entry) = lock.get(name).or_else(|| lock.get(canonical)) {
+            let same_dev = entry.session.lock().map(|s| s.device().location() == device.location()).unwrap_or(true);
+            if same_dev {
+                return Ok(entry.meta.clone());
+            }
+            lock.remove(name);
+            lock.remove(canonical);
+            self.relinquish(name);
+            if name != canonical {
+                self.relinquish(canonical);
+            }
+        }
+        let cas_fd = crate::model::cas::fetch_model_fd(name);
+        let path_opt = self.resolve(name);
+        if cas_fd.is_none() && path_opt.is_none() {
+            return Err(RuntimedError::ModelNotFound(name.to_string()));
+        }
+        if let Some(ref p) = path_opt {
+            self.pinned(name, p)?;
+        }
 
         let (session, meta, tokenizer, eos, add_special) = if let Some(fd) = cas_fd {
             let mut cas_file = std::fs::File::from(fd);

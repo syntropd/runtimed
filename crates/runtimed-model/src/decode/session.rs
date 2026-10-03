@@ -99,6 +99,7 @@ impl Session {
     }
 
     pub fn reset(&mut self) {
+        let _ = Weights::ensure_current(self.device());
         match &mut self.kind {
             Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.reset(),
             Kind::Gemma4(c) => c.reset(),
@@ -107,6 +108,7 @@ impl Session {
 
     /// Roll back internal KV cache to target_len tokens for speculative decoding.
     pub fn truncate(&mut self, target_len: usize) {
+        let _ = Weights::ensure_current(self.device());
         match &mut self.kind {
             Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.truncate(target_len),
             Kind::Gemma4(c) => c.truncate(target_len),
@@ -115,6 +117,7 @@ impl Session {
 
     /// Spill up to `count` resident accelerator KV layers to host CPU RAM.
     pub fn spill_layers(&mut self, count: usize) -> Result<usize> {
+        Weights::ensure_current(self.device())?;
         match &mut self.kind {
             Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.spill_layers(count),
             Kind::Gemma4(c) => c.spill_layers(count),
@@ -123,6 +126,7 @@ impl Session {
 
     /// Prefetch up to `count` spilled CPU KV layers back to target compute device.
     pub fn prefetch_layers(&mut self, count: usize) -> Result<usize> {
+        Weights::ensure_current(self.device())?;
         let dev = self.device().clone();
         match &mut self.kind {
             Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.prefetch_layers(&dev, count),

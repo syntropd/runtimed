@@ -162,13 +162,14 @@ impl Runtime1Handler {
             runtimed_model::Weights::clear_current_thread_context();
             res
         }).await;
+        let draft_ref = speculative_draft_model.as_deref();
         match loaded {
             Ok(Ok(_)) => {}
-            Ok(Err(e)) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+            Ok(Err(e)) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature, draft_ref).await {
                 Ok(res) => return VarlinkReply::ok(json!({ "result": res })),
                 Err(err) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("{e}; provider: {err}") }))),
             },
-            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature, draft_ref).await {
                 Ok(res) => return VarlinkReply::ok(json!({ "result": res })),
                 Err(err) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("loader failed: {e}; provider: {err}") }))),
             },
@@ -224,7 +225,7 @@ impl Runtime1Handler {
         };
         match output {
             Ok(result) => VarlinkReply::ok(json!({ "result": result })),
-            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature, draft_ref).await {
                 Ok(res) => VarlinkReply::ok(json!({ "result": res })),
                 Err(err) => VarlinkReply::err(
                     "io.syntrop.Runtime1.GenerationFailed",

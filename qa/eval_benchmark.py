@@ -54,7 +54,7 @@ BENCHMARK_PROMPTS = [
         "id": "code_palindrome",
         "domain": "Code Generation",
         "prompt": "Write a Python function `def is_palindrome(s: str) -> bool:` that returns True if the string is a palindrome ignoring case and spaces. Output only the Python function code.",
-        "max_tokens": 128,
+        "max_tokens": 512,
         "verifier": lambda text: verify_python_code(
             text,
             "is_palindrome",
@@ -70,7 +70,7 @@ BENCHMARK_PROMPTS = [
         "id": "code_factorial",
         "domain": "Code Generation",
         "prompt": "Write a Python function `def factorial(n: int) -> int:` that returns the factorial of non-negative integer n. Output only the Python function code.",
-        "max_tokens": 128,
+        "max_tokens": 512,
         "verifier": lambda text: verify_python_code(
             text,
             "factorial",
@@ -85,7 +85,7 @@ BENCHMARK_PROMPTS = [
         "id": "code_evens",
         "domain": "Code Generation",
         "prompt": "Write a Python function `def filter_evens(nums: list) -> list:` that returns a list containing only the even numbers from nums. Output only the Python function code.",
-        "max_tokens": 128,
+        "max_tokens": 512,
         "verifier": lambda text: verify_python_code(
             text,
             "filter_evens",
@@ -459,9 +459,13 @@ def evaluate_config(
         max_toks = item["max_tokens"]
         if any(k in model.lower() for k in ["qwen3.5", "gemma", "muse"]):
             if domain == "Code Generation":
-                max_toks = 896
+                max_toks = 1400
+            elif domain == "Structured JSON":
+                max_toks = 576
+            elif domain == "Logic & Arithmetic":
+                max_toks = 480
             else:
-                max_toks = max(max_toks + 512, 640)
+                max_toks = 384
         verifier = item["verifier"]
 
         if domain not in domain_stats:
@@ -716,8 +720,34 @@ def main():
     parser.add_argument("--draft", help="Draft model for speculative decoding")
     parser.add_argument("--backend", help="Compute backend (e.g. cuda:0)")
     parser.add_argument("--draft-backend", help="Draft compute backend (e.g. cuda:1)")
+    parser.add_argument("--decision", action="store_true", help="Include decision engine benchmark with single model")
+    parser.add_argument("--decision-only", action="store_true", help="Run only decision engine benchmark (clef family)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON results")
     args = parser.parse_args()
+
+    if args.decision_only or (args.single and args.single.startswith("clef")):
+        decision_configs = [
+            {"name": "Clef Flash (9B Decision Engine)", "model": "clef-flash"},
+            {"name": "Clef (27B Dual-GPU Decision Engine)", "model": "clef"},
+        ]
+        if args.single:
+            decision_configs = [{"name": f"{args.single} (Decision Engine)", "model": args.single}]
+        dec_summaries = []
+        for dcfg in decision_configs:
+            dsummary = evaluate_decision_config(dcfg["name"], dcfg["model"])
+            dec_summaries.append(dsummary)
+        if args.json:
+            print(json.dumps(dec_summaries, indent=2))
+            return
+        print("\n\n" + "#" * 60)
+        print("## Clef Family Deterministic Decision Benchmark (DO LAST)")
+        print("#" * 60 + "\n")
+        print("| Configuration | Model | Decisions / sec | Latency (ms) | Accuracy (%) | Verification Status |")
+        print("| :--- | :--- | :---: | :---: | :---: | :---: |")
+        for ds in dec_summaries:
+            status = "VERIFIED" if ds["accuracy"] >= 80.0 else "UNVERIFIED"
+            print(f"| **{ds['name']}** | `{ds['model']}` | **{ds['dec_per_sec']:.2f} dec/s** | {ds['avg_latency_ms']:.1f} ms | **{ds['accuracy']:.1f}%** | {status} |")
+        return
 
     configs = []
     if args.single:

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "d696016",
+ "rev": "524de65",
  "dirty": true,
  "pages": [
   {
@@ -516,7 +516,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/bridge/dispatch.rs",
-   "lines": 148,
+   "lines": 152,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -551,7 +551,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/decision/systemone.rs",
-   "lines": 205,
+   "lines": 234,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -649,7 +649,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 242,
+   "lines": 243,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8

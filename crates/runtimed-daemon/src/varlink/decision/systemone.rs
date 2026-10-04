@@ -130,18 +130,32 @@ pub async fn call_systemone_endpoint(payload: &Value) -> Result<Value, String> {
     stream.flush().await.map_err(|e| e.to_string())?;
 
     let mut response_bytes = Vec::new();
-    stream
-        .read_to_end(&mut response_bytes)
+    let read_fut = stream.read_to_end(&mut response_bytes);
+    timeout(Duration::from_secs(180), read_fut)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| "systemone provider read timed out".to_string())?
+        .map_err(|e| format!("systemone read failed: {e}"))?;
 
     let response_str = String::from_utf8_lossy(&response_bytes);
-    let body = response_str
+    parse_systemone_http_response(&response_str)
+}
+
+/// Parse HTTP response body for /v1/systemone with chunk framing protection.
+pub fn parse_systemone_http_response(raw_resp: &str) -> Result<Value, String> {
+    if raw_resp.is_empty() {
+        return Err("systemone provider returned empty response".to_string());
+    }
+    let body = raw_resp
         .split("\r\n\r\n")
         .nth(1)
-        .unwrap_or(&response_str);
+        .unwrap_or(raw_resp);
 
-    let parsed: Value = serde_json::from_str(body.trim())
+    let json_slice = match (body.find('{'), body.rfind('}')) {
+        (Some(start), Some(end)) if start <= end => &body[start..=end],
+        _ => body.trim(),
+    };
+
+    let parsed: Value = serde_json::from_str(json_slice)
         .map_err(|e| format!("parse response JSON failed: {e}"))?;
 
     if let Some(err) = parsed.get("error").and_then(|v| v.as_str()) {
@@ -201,5 +215,20 @@ mod tests {
         assert_eq!(ans["type"], "bool");
         assert_eq!(ans["bool"], true);
         assert!((ans["confidence"].as_f64().unwrap() - 0.9).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_parse_systemone_http_response_chunked() {
+        let chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1f4\r\n{\"model\":\"clef-flash\",\"answers\":{\"ready\":{\"type\":\"noul\",\"noul\":0.99}}}\r\n0\r\n\r\n";
+        let res = parse_systemone_http_response(chunked).unwrap();
+        assert_eq!(res["model"], "clef-flash");
+        assert_eq!(res["answers"]["ready"]["type"], "noul");
+    }
+
+    #[test]
+    fn test_parse_systemone_http_response_error() {
+        let err_resp = "HTTP/1.1 400 Bad Request\r\n\r\n{\"error\":\"invalid question schema\"}";
+        let err = parse_systemone_http_response(err_resp).unwrap_err();
+        assert_eq!(err, "invalid question schema");
     }
 }

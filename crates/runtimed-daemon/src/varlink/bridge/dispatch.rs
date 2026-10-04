@@ -50,6 +50,7 @@ pub async fn dispatch_ollama(
     prompt: &str,
     max_tokens: usize,
     temperature: f32,
+    draft_model: Option<&str>,
 ) -> Result<GenerationResult, RuntimedError> {
     let connect_future = TcpStream::connect("127.0.0.1:11434");
     let mut stream = timeout(Duration::from_secs(5), connect_future)
@@ -57,7 +58,7 @@ pub async fn dispatch_ollama(
         .map_err(|_| RuntimedError::GenerationFailed("provider daemon connect timed out".into()))?
         .map_err(|e| RuntimedError::GenerationFailed(format!("connect to provider failed: {e}")))?;
 
-    let payload = serde_json::json!({
+    let mut payload = serde_json::json!({
         "model": model,
         "prompt": prompt,
         "stream": false,
@@ -66,6 +67,9 @@ pub async fn dispatch_ollama(
             "temperature": temperature
         }
     });
+    if let Some(draft) = draft_model {
+        payload["draft_model"] = serde_json::json!(draft);
+    }
 
     let body_str = serde_json::to_string(&payload)
         .map_err(|e| RuntimedError::GenerationFailed(format!("JSON encode failed: {e}")))?;

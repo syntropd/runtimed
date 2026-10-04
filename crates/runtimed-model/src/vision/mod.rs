@@ -21,7 +21,7 @@ pub use crate::vision::vpre::{prepare, PreparedImage};
 use crate::error::{ModelError, Result};
 use crate::ops;
 use crate::weights::Weights;
-use candle_core::{DType, Device, Tensor};
+use candle_core::{Device, Tensor};
 use runtimed_gguf::{GgufFile, MetaValue};
 
 /// Placeholder ids for the image chunk (boi, per-token, eoi).
@@ -145,8 +145,7 @@ impl VisionTower {
         let q = axial_rope(&q, &img.pos_x, &img.pos_y, half)?;
         let k = axial_rope(&k, &img.pos_x, &img.pos_y, half)?;
         let v = ops::rms_norm_plain(&v, cfg.eps)?;
-        let zero = Tensor::zeros((n, n), DType::F32, h.device())?;
-        let o = ops::attention(&q, &k, &v, &zero, 1.0)?;
+        let o = ops::attention(&q, &k, &v, None, 1.0)?;
         let o = o.transpose(1, 2)?.reshape((1, n, cfg.n_head * cfg.head_dim))?;
         let o = self.clipped(&o, &format!("{pre}.attn_out"))?;
         let o = ops::rms_norm(&o, &self.w.get(&format!("{pre}.attn_post_norm.weight"))?, cfg.eps)?;

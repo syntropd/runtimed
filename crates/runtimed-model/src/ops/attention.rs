@@ -2,7 +2,34 @@
 
 use super::activation::softmax_last;
 use crate::error::Result;
-use candle_core::{Device, Tensor};
+use candle_core::{Device, DeviceLocation, Tensor};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+type GqaCache = HashMap<(usize, usize, DeviceLocation), Tensor>;
+static GQA_INDEX_CACHE: Mutex<Option<GqaCache>> = Mutex::new(None);
+
+/// Retrieve or compute cached GQA head indexing tensor on target compute device.
+fn get_gqa_index(hv: usize, n_rep: usize, dev: &Device) -> Result<Tensor> {
+    let loc = dev.location();
+    let key = (hv, n_rep, loc);
+    {
+        let mut lock = GQA_INDEX_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let map = lock.get_or_insert_with(HashMap::new);
+        if let Some(t) = map.get(&key) {
+            return Ok(t.clone());
+        }
+    }
+    let mut idx = Vec::with_capacity(hv * n_rep);
+    for head in 0..hv as u32 {
+        idx.extend(std::iter::repeat_n(head, n_rep));
+    }
+    let idx_tensor = Tensor::from_vec(idx, hv * n_rep, dev)?;
+    let mut lock = GQA_INDEX_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = lock.get_or_insert_with(HashMap::new);
+    map.insert(key, idx_tensor.clone());
+    Ok(idx_tensor)
+}
 
 /// Additive attention mask `[t_q, t_k]`: 0 where allowed, -inf elsewhere.
 ///
@@ -15,6 +42,9 @@ pub fn causal_mask(
     window: Option<usize>,
     dev: &Device,
 ) -> Result<Tensor> {
+    if t_q == 1 && window.is_none() && t_k <= q0 + 1 {
+        return Ok(Tensor::zeros((1, t_k), candle_core::DType::F32, dev)?);
+    }
     let neg = f32::NEG_INFINITY;
     let mut m = vec![0.0f32; t_q * t_k];
     for i in 0..t_q {
@@ -36,27 +66,31 @@ fn repeat_kv_heads(kv: &Tensor, n_rep: usize) -> Result<Tensor> {
         return Ok(kv.clone());
     }
     let hv = kv.dim(1)?;
-    let mut idx = Vec::with_capacity(hv * n_rep);
-    for head in 0..hv as u32 {
-        idx.extend(std::iter::repeat_n(head, n_rep));
-    }
-    let idx = Tensor::from_vec(idx, hv * n_rep, kv.device())?;
-    Ok(kv.contiguous()?.index_select(&idx, 1)?)
+    let idx = get_gqa_index(hv, n_rep, kv.device())?;
+    let kv = if kv.is_contiguous() { kv.clone() } else { kv.contiguous()? };
+    Ok(kv.index_select(&idx, 1)?)
 }
 
-/// `softmax(q @ k^T * scale + mask) @ v`, with GQA head expansion.
+/// `softmax(q @ k^T * scale + mask) @ v`, with GQA head expansion and mask bypass.
 pub fn attention(
     q: &Tensor,
     k: &Tensor,
     v: &Tensor,
-    mask: &Tensor,
+    mask: Option<&Tensor>,
     scale: f32,
 ) -> Result<Tensor> {
     let n_rep = q.dim(1)? / k.dim(1)?;
-    let k = repeat_kv_heads(k, n_rep)?.contiguous()?;
-    let v = repeat_kv_heads(v, n_rep)?.contiguous()?;
-    let scores = q.matmul(&k.transpose(2, 3)?)?.affine(scale as f64, 0.0)?;
-    let scores = scores.broadcast_add(mask)?;
+    let k = repeat_kv_heads(k, n_rep)?;
+    let v = repeat_kv_heads(v, n_rep)?;
+    let mut scores = q.matmul(&k.transpose(2, 3)?)?.affine(scale as f64, 0.0)?;
+    if let Some(mask) = mask {
+        let mask = if mask.dtype() != scores.dtype() {
+            mask.to_dtype(scores.dtype())?
+        } else {
+            mask.clone()
+        };
+        scores = scores.broadcast_add(&mask)?;
+    }
     let probs = softmax_last(&scores)?;
     Ok(probs.matmul(&v)?)
 }
@@ -83,5 +117,29 @@ mod tests {
         let t = Tensor::zeros((1, 2, 3, 4), candle_core::DType::F32, &dev).unwrap();
         let rep = repeat_kv_heads(&t, 1).unwrap();
         assert_eq!(rep.dims(), &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_scatter_set_kv() {
+        let dev = Device::Cpu;
+        let buf = Tensor::zeros((1, 2, 8, 4), candle_core::DType::F32, &dev).unwrap();
+        let tok = Tensor::ones((1, 2, 1, 4), candle_core::DType::F32, &dev).unwrap();
+        let ids = Tensor::from_vec(vec![0u32; 8], (1, 2, 1, 4), &dev).unwrap();
+        buf.scatter_set(&ids, &tok, 2).unwrap();
+        let act = buf.narrow(2, 0, 1).unwrap();
+        assert_eq!(act.dims(), &[1, 2, 1, 4]);
+
+        #[cfg(feature = "cuda")]
+        if let Ok(cdev) = Device::new_cuda(0) {
+            let buf_c = Tensor::zeros((1, 2, 8, 4), candle_core::DType::F16, &cdev).unwrap();
+            let tok_c = Tensor::ones((1, 2, 1, 4), candle_core::DType::F16, &cdev).unwrap();
+            let ids_c = Tensor::from_vec(vec![0u32; 8], (1, 2, 1, 4), &cdev).unwrap();
+            buf_c.scatter_set(&ids_c, &tok_c, 2).unwrap();
+            let k_act = buf_c.narrow(2, 0, 1).unwrap();
+            let v_act = buf_c.narrow(2, 0, 1).unwrap();
+            let q = Tensor::ones((1, 2, 1, 4), candle_core::DType::F16, &cdev).unwrap();
+            let o = attention(&q, &k_act, &v_act, None, 1.0).unwrap();
+            assert_eq!(o.dims(), &[1, 2, 1, 4]);
+        }
     }
 }

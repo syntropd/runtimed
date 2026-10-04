@@ -34,10 +34,17 @@ impl RowParallelLinear {
         }
         let shard_size = in_dim / tp_size;
         let start = rank * shard_size;
-        let weight = full_weight.narrow(1, start, shard_size)?;
+        let weight = full_weight.narrow(1, start, shard_size)?.contiguous()?;
 
         // Only rank 0 adds the bias in row-parallel linear
-        let bias = if rank == 0 { full_bias.cloned() } else { None };
+        let bias = if rank == 0 {
+            match full_bias {
+                Some(b) => Some(b.contiguous()?),
+                None => None,
+            }
+        } else {
+            None
+        };
 
         Ok(Self { weight, bias, rank, tp_size })
     }

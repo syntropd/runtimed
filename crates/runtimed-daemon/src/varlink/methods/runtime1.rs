@@ -116,7 +116,7 @@ impl Runtime1Handler {
         let reasoning_budget = params.get("reasoning_budget").and_then(|v| v.as_u64()).map(|v| v as usize);
         let reasoning_effort = params.get("reasoning_effort").and_then(|v| v.as_str()).and_then(|s| s.parse::<ReasoningEffort>().ok());
         let speculative_draft_model = params.get("speculative_draft_model").and_then(|v| v.as_str()).map(str::to_string);
-        let k_draft = params.get("k_draft").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
+        let k_draft = params.get("k_draft").and_then(|v| v.as_u64()).map(|v| (v as usize).clamp(2, 8)).unwrap_or(4);
 
         if let Some(ref draft_name) = speculative_draft_model {
             if draft_name == model_name {

@@ -7,77 +7,67 @@ use crate::weights::Weights;
 use candle_core::Tensor;
 
 /// Per-layer `(k, v)` caches. Only layers that own KV ever fill a slot;
-/// shared layers read their source layer's slot instead.
+/// Per-layer contiguous chunked O(1) KV cache. Only layers that own KV
+/// store entries; shared layers read their source layer's slot instead.
 pub struct Cache {
-    layers: Vec<Option<(Tensor, Tensor)>>,
+    pub(crate) entries: Vec<Option<crate::cache::LayerKv>>,
 }
 
 impl Cache {
     pub fn new(n_layer: usize) -> Self {
-        Self {
-            layers: (0..n_layer).map(|_| None).collect(),
-        }
+        Self { entries: (0..n_layer).map(|_| None).collect() }
     }
 
     pub fn reset(&mut self) {
-        for slot in self.layers.iter_mut() {
-            *slot = None;
-        }
+        for slot in self.entries.iter_mut() { *slot = None; }
     }
 
     pub fn truncate(&mut self, target_len: usize) {
-        for slot in self.layers.iter_mut() {
-            if let Some((k, v)) = slot.take() {
-                if target_len > 0 && k.dim(2).map(|l| l > target_len).unwrap_or(false) {
-                    if let (Ok(kt), Ok(vt)) = (k.narrow(2, 0, target_len), v.narrow(2, 0, target_len)) {
-                        *slot = Some((kt, vt));
-                        continue;
-                    }
-                }
-                if target_len > 0 {
-                    *slot = Some((k, v));
-                }
+        for slot in self.entries.iter_mut().flatten() { slot.truncate(target_len); }
+    }
+
+    pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, _dev: &candle_core::Device) -> Result<(Tensor, Tensor)> {
+        if layer >= self.entries.len() { return Err(ModelError::Config(format!("layer {layer} out of bounds"))); }
+        match &mut self.entries[layer] {
+            Some(kv) => kv.append(k, v),
+            None => {
+                let kv = crate::cache::LayerKv::new(k, v, 256)?;
+                let res = kv.current()?;
+                self.entries[layer] = Some(kv);
+                Ok(res)
             }
         }
     }
 
-    /// Splice visual KV blocks into cache on the target device.
+    pub fn get_layer(&self, layer: usize) -> Result<(Tensor, Tensor)> {
+        self.entries.get(layer).and_then(|o| o.as_ref())
+            .ok_or_else(|| ModelError::Config(format!("layer {layer}: KV source empty")))?
+            .current()
+    }
+
     pub fn splice_kv(&mut self, kv: &[Option<(Tensor, Tensor)>], dev: &candle_core::Device) -> Result<()> {
         for (i, (k, v)) in kv.iter().enumerate().filter_map(|(i, o)| o.as_ref().map(|p| (i, p))) {
-            if i >= self.layers.len() { break; }
+            if i >= self.entries.len() { break; }
             let (kd, vd) = (k.to_device(dev)?, v.to_device(dev)?);
-            self.layers[i] = match self.layers[i].take() {
-                Some((ok, ov)) => Some((Tensor::cat(&[&ok, &kd], 2)?, Tensor::cat(&[&ov, &vd], 2)?)),
-                None => Some((kd, vd)),
-            };
+            let _ = self.append(i, &kd, &vd, dev)?;
         }
         Ok(())
     }
 
-    /// Spill up to `max_layers` resident accelerator KV layers to host CPU RAM.
     pub fn spill_layers(&mut self, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for (k, v) in self.layers.iter_mut().flatten() {
+        for kv in self.entries.iter_mut().flatten() {
             if n >= max_layers { break; }
-            if !matches!(k.device(), candle_core::Device::Cpu) {
-                *k = k.to_device(&candle_core::Device::Cpu)?;
-                *v = v.to_device(&candle_core::Device::Cpu)?;
-                n += 1;
-            }
+            if kv.spill_to_cpu()? { n += 1; }
         }
         Ok(n)
     }
 
-    /// Prefetch up to `max_layers` spilled CPU KV layers back to compute device.
     pub fn prefetch_layers(&mut self, dev: &candle_core::Device, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for (k, v) in self.layers.iter_mut().flatten() {
+        for kv in self.entries.iter_mut().flatten() {
             if n >= max_layers { break; }
-            if matches!(k.device(), candle_core::Device::Cpu) && !matches!(dev, candle_core::Device::Cpu) {
-                *k = k.to_device(dev)?;
-                *v = v.to_device(dev)?;
-                n += 1;
-            }
+            if kv.prefetch_to_dev(dev)? { n += 1; }
         }
         Ok(n)
     }
@@ -139,30 +129,22 @@ fn layer(
         let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, factors)?;
         let v = w.linear(&n, &format!("{pre}.attn_v.weight"))?;
         let v = ops::rms_norm_plain(&split(v)?, cfg.eps)?;
-        match cache.layers[i].take() {
-            Some((pk, pv)) => {
-                let pk = if pk.device().same_device(dev) { pk } else { pk.to_device(dev)? };
-                let pv = if pv.device().same_device(dev) { pv } else { pv.to_device(dev)? };
-                (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?)
-            }
-            None => (k, v),
-        }
+        cache.append(i, &k, &v, dev)?
     } else {
-        let (sk, sv) = cache.layers[lc.kv_source].clone().ok_or_else(|| {
-            ModelError::Config(format!("layer {i}: KV source cache empty"))
-        })?;
+        let (sk, sv) = cache.get_layer(lc.kv_source)?;
         let sk = if sk.device().same_device(dev) { sk } else { sk.to_device(dev)? };
         let sv = if sv.device().same_device(dev) { sv } else { sv.to_device(dev)? };
         (sk, sv)
     };
     let total = k_full.dim(2)?;
     let window = lc.is_swa.then_some(cfg.sliding_window).flatten();
-    let mask = ops::causal_mask(t, total, q0, window, dev)?;
+    let mask = if t == 1 && window.is_none_or(|w| total <= w) {
+        None
+    } else {
+        Some(ops::causal_mask(t, total, q0, window, dev)?)
+    };
     let scale = cfg.attn_scale.unwrap_or_else(|| (lc.head_dim as f32).sqrt().recip());
-    let o = ops::attention(&q, &k_full, &v_full, &mask, scale)?;
-    if lc.has_kv {
-        cache.layers[i] = Some((k_full, v_full));
-    }
+    let o = ops::attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
     let o = ops::rms_norm(&o, &w.get(&format!("{pre}.post_attention_norm.weight"))?, cfg.eps)?;

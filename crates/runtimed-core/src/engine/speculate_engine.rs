@@ -3,6 +3,7 @@
 use crate::engine::generator::{finish, GenerationRequest, GenerationResult, Rng};
 use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
+use candle_core::Tensor;
 use runtimed_model::decode::generate::last_row;
 use runtimed_model::decode::speculate::speculative_step;
 use std::time::Instant;
@@ -34,6 +35,49 @@ pub fn generate_speculative(
         .max_tokens
         .min(target_entry.meta.context_window - prompt_ids.len());
 
+    let is_multi_dev = {
+        let t = target_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("target lock poisoned".into()))?;
+        let d = draft_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("draft lock poisoned".into()))?;
+        !t.device().same_device(d.device())
+    };
+
+    // Prefill both sessions with the prompt (concurrently if multi-GPU)
+    let (mut target_head, mut draft_head) = if is_multi_dev {
+        let (t_res, d_res) = std::thread::scope(|s| {
+            let t_h = s.spawn(|| -> Result<Tensor, RuntimedError> {
+                let mut target_session = target_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("target lock poisoned".into()))?;
+                let _ = runtimed_model::Weights::ensure_current(target_session.device());
+                target_session.reset();
+                let pre = target_session.forward(&prompt_ids, 0).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+                last_row(&pre).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
+            });
+            let d_h = s.spawn(|| -> Result<Tensor, RuntimedError> {
+                let mut draft_session = draft_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("draft lock poisoned".into()))?;
+                let _ = runtimed_model::Weights::ensure_current(draft_session.device());
+                draft_session.reset();
+                let pre = draft_session.forward(&prompt_ids, 0).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+                last_row(&pre).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))
+            });
+            (t_h.join().unwrap(), d_h.join().unwrap())
+        });
+        (t_res?, d_res?)
+    } else {
+        let mut target_session = target_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("target lock poisoned".into()))?;
+        let _ = runtimed_model::Weights::ensure_current(target_session.device());
+        target_session.reset();
+        let target_prefill = target_session.forward(&prompt_ids, 0).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+        let t_head = last_row(&target_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+        drop(target_session);
+
+        let mut draft_session = draft_entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("draft lock poisoned".into()))?;
+        let _ = runtimed_model::Weights::ensure_current(draft_session.device());
+        draft_session.reset();
+        let draft_prefill = draft_session.forward(&prompt_ids, 0).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+        let d_head = last_row(&draft_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+        drop(draft_session);
+        (t_head, d_head)
+    };
+
     let mut target_session = target_entry
         .session
         .lock()
@@ -42,21 +86,6 @@ pub fn generate_speculative(
         .session
         .lock()
         .map_err(|_| RuntimedError::GenerationFailed("draft session lock poisoned".into()))?;
-
-    // Prefill both sessions with the prompt
-    let _ = runtimed_model::Weights::ensure_current(target_session.device());
-    target_session.reset();
-    let target_prefill = target_session
-        .forward(&prompt_ids, 0)
-        .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-    let mut target_head = last_row(&target_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-
-    let _ = runtimed_model::Weights::ensure_current(draft_session.device());
-    draft_session.reset();
-    let draft_prefill = draft_session
-        .forward(&prompt_ids, 0)
-        .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
-    let mut draft_head = last_row(&draft_prefill).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
 
     let seed = if request.seed == 0 {
         crate::engine::generator::entropy_seed()
@@ -67,10 +96,13 @@ pub fn generate_speculative(
 
     let mut generated = Vec::new();
     let mut current_pos = prompt_ids.len();
+    let mut current_k = k_draft.clamp(2, 8);
+    let mut ema_acceptance = 0.5f32;
+    let ema_alpha = 0.3f32;
 
     while generated.len() < budget {
         let remaining_budget = budget - generated.len();
-        let k = k_draft.min(remaining_budget);
+        let k = current_k.min(remaining_budget);
 
         let (step, next_draft, next_target) = speculative_step(
             &mut draft_session,
@@ -86,6 +118,17 @@ pub fn generate_speculative(
             || rng.next_f32(),
         )
         .map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
+
+        // Dynamic speculative draft length adaptation tracking EMA token acceptance rate
+        if step.proposed_count > 0 {
+            let round_rate = step.accepted_count as f32 / step.proposed_count as f32;
+            ema_acceptance = ema_alpha * round_rate + (1.0 - ema_alpha) * ema_acceptance;
+            if ema_acceptance >= 0.75 && current_k < 8 {
+                current_k += 1;
+            } else if ema_acceptance < 0.40 && current_k > 2 {
+                current_k -= 1;
+            }
+        }
 
         current_pos += step.tokens.len();
         generated.extend_from_slice(&step.tokens);

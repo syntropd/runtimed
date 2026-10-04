@@ -34,10 +34,10 @@ impl ColumnParallelLinear {
         }
         let shard_size = out_dim / tp_size;
         let start = rank * shard_size;
-        let weight = full_weight.narrow(0, start, shard_size)?;
+        let weight = full_weight.narrow(0, start, shard_size)?.contiguous()?;
 
         let bias = match full_bias {
-            Some(b) => Some(b.narrow(0, start, shard_size)?),
+            Some(b) => Some(b.narrow(0, start, shard_size)?.contiguous()?),
             None => None,
         };
 

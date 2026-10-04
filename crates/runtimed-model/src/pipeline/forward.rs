@@ -142,9 +142,13 @@ fn execute_stage_layer(
     }
 
     let total = k.dim(2)?;
-    let mask = ops::causal_mask(t, total, q0, None, dev)?;
+    let mask = if t == 1 {
+        None
+    } else {
+        Some(ops::causal_mask(t, total, q0, None, dev)?)
+    };
     let scale = (lc.head_dim as f32).sqrt().recip();
-    let o = ops::attention(&q, &k, &v, &mask, scale)?;
+    let o = ops::attention(&q, &k, &v, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
     let h = h.broadcast_add(&o)?;

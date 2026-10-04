@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "028f5f6",
+ "rev": "8ad5beb",
  "dirty": true,
  "pages": [
   {
@@ -194,7 +194,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/speculate_engine.rs",
-   "lines": 113,
+   "lines": 156,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -859,14 +859,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/gemma4.rs",
-   "lines": 247,
+   "lines": 229,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/arch/granite.rs",
-   "lines": 148,
+   "lines": 144,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -880,14 +880,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/phi3.rs",
-   "lines": 122,
+   "lines": 118,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 197,
+   "lines": 192,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -942,6 +942,13 @@
    "reach": 1
   },
   {
+   "path": "./crates/runtimed-model/src/cache/chunked.rs",
+   "lines": 177,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-model/src/cache/image_cache.rs",
    "lines": 243,
    "bin_bytes": null,
@@ -957,7 +964,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/mod.rs",
-   "lines": 27,
+   "lines": 29,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1093,7 +1100,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 64
+   "reach": 66
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1146,7 +1153,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/ops/attention.rs",
-   "lines": 87,
+   "lines": 145,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1195,7 +1202,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
-   "lines": 241,
+   "lines": 245,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1289,11 +1296,18 @@
    "lines": 62,
    "bin_bytes": null,
    "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/tp/dual_gpu.rs",
+   "lines": 243,
+   "bin_bytes": null,
+   "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/tp/mod.rs",
-   "lines": 33,
+   "lines": 35,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1303,14 +1317,14 @@
    "lines": 65,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/tp/row_linear.rs",
-   "lines": 60,
+   "lines": 67,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/vision/ephemeral.rs",
@@ -1328,7 +1342,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/vision/mod.rs",
-   "lines": 225,
+   "lines": 224,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

@@ -49,20 +49,16 @@ fn layer(
     let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
     let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
 
-    // Extend the KV cache and attend over all of it.
-    let (k_full, v_full) = match cache.layers[i].take() {
-        Some((pk, pv)) => {
-            let pk = if pk.device().same_device(dev) { pk } else { pk.to_device(dev)? };
-            let pv = if pv.device().same_device(dev) { pv } else { pv.to_device(dev)? };
-            (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?)
-        }
-        None => (k, v),
-    };
+    // Extend the KV cache in O(1) contiguous chunked storage and attend over it.
+    let (k_full, v_full) = cache.append(i, &k, &v, dev)?;
     let total = k_full.dim(2)?;
-    let mask = ops::causal_mask(t, total, q0, None, dev)?;
+    let mask = if t == 1 {
+        None
+    } else {
+        Some(ops::causal_mask(t, total, q0, None, dev)?)
+    };
     let scale = cfg.attn_scale.unwrap_or_else(|| (lc.head_dim as f32).sqrt().recip());
-    let o = ops::attention(&q, &k_full, &v_full, &mask, scale)?;
-    cache.layers[i] = Some((k_full, v_full));
+    let o = ops::attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
     let h = h.broadcast_add(&o)?;

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "f1118bb",
+ "rev": "028f5f6",
  "dirty": true,
  "pages": [
   {
@@ -292,14 +292,21 @@
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/mod.rs",
-   "lines": 21,
+   "lines": 23,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/model/admit_lease/permit.rs",
-   "lines": 90,
+   "lines": 122,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-core/src/model/admit_lease/sizing.rs",
+   "lines": 117,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -477,7 +484,7 @@
    "lines": 95,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 3
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-daemon/src/lib.rs",
@@ -775,7 +782,7 @@
   },
   {
    "path": "./crates/runtimed-gguf/src/quant/dtype.rs",
-   "lines": 92,
+   "lines": 95,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
@@ -859,7 +866,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/granite.rs",
-   "lines": 147,
+   "lines": 148,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -950,17 +957,38 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/mod.rs",
-   "lines": 25,
+   "lines": 27,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
-   "path": "./crates/runtimed-model/src/cache/paged_cache.rs",
-   "lines": 245,
+   "path": "./crates/runtimed-model/src/cache/paged/block.rs",
+   "lines": 187,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
+  },
+  {
+   "path": "./crates/runtimed-model/src/cache/paged/mod.rs",
+   "lines": 9,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/cache/paged/quantize.rs",
+   "lines": 220,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 3
+  },
+  {
+   "path": "./crates/runtimed-model/src/cache/paged/table.rs",
+   "lines": 254,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/cache/sink_mask.rs",
@@ -978,7 +1006,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/spill_manager.rs",
-   "lines": 185,
+   "lines": 177,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1048,14 +1076,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
-   "lines": 250,
+   "lines": 252,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 5
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
-   "lines": 251,
+   "lines": 253,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -1065,7 +1093,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 54
+   "reach": 64
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1110,11 +1138,60 @@
    "reach": 4
   },
   {
-   "path": "./crates/runtimed-model/src/ops.rs",
-   "lines": 249,
+   "path": "./crates/runtimed-model/src/ops/activation.rs",
+   "lines": 54,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 10
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/attention.rs",
+   "lines": 87,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/fp8_gemm.rs",
+   "lines": 232,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/marlin_gemv.rs",
+   "lines": 250,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/mod.rs",
+   "lines": 16,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/norm.rs",
+   "lines": 45,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/ptx_marlin.rs",
+   "lines": 160,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/ops/rope.rs",
+   "lines": 146,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/pipeline/forward.rs",
@@ -1341,39 +1418,60 @@
    "reach": 1
   },
   {
+   "path": "./crates/runtimed-model/src/weights/embed_layer.rs",
+   "lines": 126,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/fp8_weight.rs",
+   "lines": 157,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/weights/linear_layer.rs",
+   "lines": 210,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
    "path": "./crates/runtimed-model/src/weights/load_gguf.rs",
-   "lines": 112,
+   "lines": 181,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-model/src/weights/load_safetensors.rs",
-   "lines": 188,
+   "lines": 223,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/weights/mod.rs",
-   "lines": 23,
+   "lines": 27,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-model/src/weights/name_map.rs",
-   "lines": 84,
+   "lines": 96,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/weights/store.rs",
-   "lines": 232,
+   "lines": 244,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 3
+   "reach": 5
   },
   {
    "path": "./crates/runtimed-model/tests/integration/arch_config.rs",
@@ -1384,7 +1482,7 @@
   },
   {
    "path": "./crates/runtimed-model/tests/integration/differential.rs",
-   "lines": 188,
+   "lines": 212,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1405,14 +1503,14 @@
   },
   {
    "path": "./crates/runtimed-model/tests/integration/safetensors_load.rs",
-   "lines": 171,
+   "lines": 239,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-model/tests/integration/storage.rs",
-   "lines": 73,
+   "lines": 75,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

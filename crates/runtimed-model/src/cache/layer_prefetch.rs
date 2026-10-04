@@ -3,7 +3,7 @@
 //! Employs two circular staging slots to pipeline host-to-device KV cache
 //! and attention tensor transfers concurrently with layer compute.
 
-use crate::cache::paged_cache::{PagedKvCache, StorageTier};
+use crate::cache::paged::{PagedKvCache, StorageTier};
 use crate::error::Result;
 use candle_core::{Device, Tensor};
 

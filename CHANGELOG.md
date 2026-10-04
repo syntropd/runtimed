@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 (2026-10-04) — Ada Lovelace FP8 Tensor Cores, Marlin GEMV & Quantized Paged KV-Cache
+
+- **In-VRAM 4-Bit Marlin GEMV**: Repacked 128-bit Marlin INT4 tiles and custom PTX kernel execution (`marlin_gemv_kernel`) yielding high-speed single-batch vector matrix multiplies.
+- **Ada Lovelace FP8 Tensor Core Pipeline**: Native F8E4M3 matrix multiplication with per-tensor and per-channel scaling factors.
+- **Quantized Paged KV-Cache**: 16-token page tables with dynamic FP8 / INT8 quantization per head, reducing KV cache resident footprint by up to 50% while preserving accuracy.
+- **Dual-GPU Speculative Offload**: Transparent gang-scheduled speculative decoding running draft models on `cuda:1` and primary target models on `cuda:0` with automated fallback.
+
 ## 0.5.14 (2026-10-01) — Speculative Decoding Daemon Wiring & Environmental Sensory Awareness
 
 - **Speculative Draft Model Wiring**: Exposed `speculative_draft_model: ?string` in `io.syntrop.Runtime1.Generate` Varlink interface. In `handle_generate`, dynamically load the draft model into resident memory and call `generate_speculative(&entry, &draft, &req, k_draft)` for accelerated token production.

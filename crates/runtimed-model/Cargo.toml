@@ -20,7 +20,7 @@ path = "tests/integration.rs"
 candle-core.workspace = true
 image.workspace = true
 memmap2.workspace = true
-runtimed-gguf = { package = "syntrop-runtimed-gguf", version = "0.5.0", path = "../runtimed-gguf" }
+runtimed-gguf = { package = "syntrop-runtimed-gguf", version = "0.6.0", path = "../runtimed-gguf" }
 rustix.workspace = true
 safetensors.workspace = true
 serde.workspace = true

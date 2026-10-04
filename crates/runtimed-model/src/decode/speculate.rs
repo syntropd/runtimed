@@ -238,7 +238,8 @@ mod tests {
 
     #[test]
     fn test_zero_prob_draft_and_nan_resilience() {
-        assert!(0.0f32 <= 0.0 && 0.5f32 > 0.0);
+        let (p_zero, q_zero) = (0.0f32, 0.5f32);
+        assert!(p_zero <= 0.0 && q_zero > 0.0);
         let (p_nan, q_val) = (f32::NAN, 0.3f32);
         let diff = if p_nan.is_nan() || q_val.is_nan() { 0.0 } else { (p_nan - q_val).max(0.0) };
         assert_eq!(diff, 0.0);
@@ -246,6 +247,7 @@ mod tests {
 
     #[test]
     fn test_rejection_prob_guaranteed_acceptance() {
-        assert!(0.6f32 >= 0.4f32);
+        let (p, q) = (0.6f32, 0.4f32);
+        assert!(p >= q);
     }
 }

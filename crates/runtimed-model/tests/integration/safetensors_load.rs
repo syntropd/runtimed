@@ -169,3 +169,71 @@ fn fp8_e5m2_dequantization_lut_correctness() {
     let res = dequantize_fp8_e5m2(&[0x7c]);
     assert!(res[0].is_infinite() && res[0].is_sign_positive());
 }
+
+#[test]
+fn loads_safetensors_cuda_fp8_linear() {
+    let dev = match Device::new_cuda(0) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let mut tensors = HashMap::new();
+    let fp8_data: Vec<u8> = vec![0x38; 16 * 16];
+    tensors.insert(
+        "model.layers.0.mlp.gate_proj.weight".to_string(),
+        safetensors::tensor::TensorView::new(Dtype::F8_E4M3, vec![16, 16], &fp8_data).unwrap(),
+    );
+    let scale_vals: Vec<f32> = (1..=16).map(|i| i as f32).collect();
+    let scale_bytes: Vec<u8> = scale_vals.iter().flat_map(|f| f.to_le_bytes()).collect();
+    tensors.insert(
+        "model.layers.0.mlp.gate_proj.weight_scale".to_string(),
+        safetensors::tensor::TensorView::new(Dtype::F32, vec![16], &scale_bytes).unwrap(),
+    );
+    let serialized = serialize(&tensors, &None).unwrap();
+    let p = tmp("load_cuda_fp8");
+    fs::write(&p, serialized).unwrap();
+
+    let weights = Weights::load_safetensors(&p, &dev).unwrap();
+    let _ = fs::remove_file(&p);
+
+    assert!(weights.get("blk.0.ffn_gate.weight").is_ok());
+    let x = candle_core::Tensor::ones((1, 16), candle_core::DType::F32, &dev).unwrap();
+    let y = weights.linear(&x, "blk.0.ffn_gate.weight").unwrap();
+    assert_eq!(y.dims(), &[1, 16]);
+    let vals = y.to_dtype(candle_core::DType::F32).unwrap().flatten_all().unwrap().to_vec1::<f32>().unwrap();
+    let expected: Vec<f32> = scale_vals.iter().map(|s| 16.0 * s).collect();
+    for (v, e) in vals.iter().zip(expected.iter()) {
+        assert!((v - e).abs() < 1e-1, "mismatch: got {v}, expected {e}");
+    }
+}
+
+#[test]
+fn loads_safetensors_marlin_linear() {
+    let dev = Device::Cpu;
+    let mut tensors = HashMap::new();
+    let (n, k) = (2, 32);
+    let mut packed_u32 = vec![0x88888888u32; (k / 32) * n * 4];
+    packed_u32[0] = 0x8888888a; // q=10 => (10-8)=2 for nibble 0
+    let p_bytes: Vec<u8> = packed_u32.into_iter().flat_map(|u| u.to_le_bytes()).collect();
+    tensors.insert(
+        "model.layers.0.self_attn.q_proj.marlin_packed".to_string(),
+        safetensors::tensor::TensorView::new(Dtype::U32, vec![1, n, 4], &p_bytes).unwrap(),
+    );
+    let s_bytes: Vec<u8> = vec![1.5f32, 2.0f32].into_iter().flat_map(|f| f.to_le_bytes()).collect();
+    tensors.insert(
+        "model.layers.0.self_attn.q_proj.scales".to_string(),
+        safetensors::tensor::TensorView::new(Dtype::F32, vec![n], &s_bytes).unwrap(),
+    );
+    let serialized = serialize(&tensors, &None).unwrap();
+    let p = tmp("load_marlin");
+    fs::write(&p, serialized).unwrap();
+    let weights = Weights::load_safetensors(&p, &dev).unwrap();
+    let _ = fs::remove_file(&p);
+
+    let x = candle_core::Tensor::ones((1, k), candle_core::DType::F32, &dev).unwrap();
+    let y = weights.linear(&x, "blk.0.attn_q.weight").unwrap();
+    assert_eq!(y.dims(), &[1, n]);
+    let vals = y.flatten_all().unwrap().to_vec1::<f32>().unwrap();
+    assert!((vals[0] - 3.0).abs() < 1e-4);
+    assert!(vals[1].abs() < 1e-4);
+}
+

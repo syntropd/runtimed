@@ -80,7 +80,7 @@ pub fn evaluate_and_spill_with_metrics(
     let decision = controller.evaluate(vram_used, vram_total, now);
     match &decision {
         WatermarkDecision::Spill { bytes_to_evict, .. } => {
-            let bb = cache.blocks.first().map(|b| (b.k.elem_count() + b.v.elem_count()) * b.k.dtype().size_in_bytes()).unwrap_or(1024 * 1024);
+            let bb = cache.blocks.first().map(|b| b.resident_bytes()).unwrap_or(1024 * 1024);
             let count = (*bytes_to_evict as usize).checked_div(bb).unwrap_or(0).max(1);
             let spilled = spiller.spill_blocks(cache, count).map_err(|e| RuntimedError::GenerationFailed(e.to_string()))?;
             warn!(spilled, bytes_to_evict, "High watermark exceeded: spilled L1 blocks to L2 host RAM");

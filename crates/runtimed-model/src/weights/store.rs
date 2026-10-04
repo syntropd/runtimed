@@ -4,8 +4,10 @@
 //! resident store is F16.
 
 use crate::error::{ModelError, Result};
+use candle_core::quantized::QMatMul;
 use candle_core::{DType, Device, Tensor};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Weights {
@@ -13,33 +15,88 @@ pub struct Weights {
     /// Resident dtype: F16 on CUDA, F32 on CPU where f16 matmul is unsupported.
     pub(super) store: DType,
     pub(super) map: HashMap<String, Tensor>,
+    pub(super) q_map: HashMap<String, Arc<QMatMul>>,
 }
 
 impl Weights {
     pub fn from_parts(dev: Device, store: DType, map: HashMap<String, Tensor>) -> Self {
-        Self { dev, store, map }
+        Self {
+            dev,
+            store,
+            map,
+            q_map: HashMap::new(),
+        }
+    }
+
+    pub fn from_quantized(
+        dev: Device,
+        store: DType,
+        map: HashMap<String, Tensor>,
+        q_map: HashMap<String, Arc<QMatMul>>,
+    ) -> Self {
+        Self {
+            dev,
+            store,
+            map,
+            q_map,
+        }
     }
 
     pub fn device(&self) -> &Device {
         &self.dev
     }
 
+    pub fn q_map(&self) -> &HashMap<String, Arc<QMatMul>> {
+        &self.q_map
+    }
+
+    pub fn q_matmul(&self, name: &str) -> Option<Arc<QMatMul>> {
+        self.q_map.get(name).cloned()
+    }
+
     pub fn resident_bytes(&self) -> usize {
-        self.map
+        let dense: usize = self
+            .map
             .values()
             .map(|t| t.elem_count() * t.dtype().size_in_bytes())
-            .sum()
+            .sum();
+        let mut seen = HashSet::new();
+        let quant: usize = self
+            .q_map
+            .values()
+            .filter(|qm| seen.insert(Arc::as_ptr(qm)))
+            .map(|qm| match qm.as_ref() {
+                QMatMul::QTensor(t) => t.storage_size_in_bytes(),
+                QMatMul::Tensor(t) | QMatMul::TensorF16(t) => {
+                    t.elem_count() * t.dtype().size_in_bytes()
+                }
+            })
+            .sum();
+        dense + quant
     }
 
     pub fn get(&self, name: &str) -> Result<Tensor> {
-        let t = self
-            .map
-            .get(name)
-            .ok_or_else(|| ModelError::MissingWeight(name.to_string()))?;
-        if t.dtype() == DType::F32 {
-            Ok(t.clone())
+        if let Some(t) = self.map.get(name) {
+            if t.dtype() == DType::F32 {
+                Ok(t.clone())
+            } else {
+                let res = t.to_dtype(DType::F32).or_else(|_| {
+                    t.to_device(&Device::Cpu)?.to_dtype(DType::F32)?.to_device(t.device())
+                })?;
+                Ok(res)
+            }
+        } else if let Some(qm) = self.q_map.get(name) {
+            let t = match qm.as_ref() {
+                QMatMul::QTensor(t) => {
+                    let dev = t.device();
+                    Self::ensure_current(&dev)?;
+                    t.dequantize(&dev)?
+                }
+                QMatMul::Tensor(t) | QMatMul::TensorF16(t) => t.clone(),
+            };
+            if t.dtype() == DType::F32 { Ok(t) } else { Ok(t.to_dtype(DType::F32)?) }
         } else {
-            Ok(t.to_dtype(DType::F32)?)
+            Err(ModelError::MissingWeight(name.to_string()))
         }
     }
 
@@ -47,81 +104,6 @@ impl Weights {
         self.map
             .get(name)
             .ok_or_else(|| ModelError::MissingWeight(name.to_string()))
-    }
-
-    pub fn linear(&self, x: &Tensor, name: &str) -> Result<Tensor> {
-        let w = self.get_raw(name)?;
-        let wt = w.t()?;
-        let in_dim = wt.dim(0)?;
-        let out_dim = wt.dim(1)?;
-        let dims = x.dims().to_vec();
-        let Some(last) = dims.last() else {
-            return Err(ModelError::Shape {
-                name: name.to_string(),
-                expected: vec![in_dim],
-                got: dims,
-            });
-        };
-        if *last != in_dim {
-            return Err(ModelError::Shape {
-                name: name.to_string(),
-                expected: vec![in_dim],
-                got: dims,
-            });
-        }
-        let rows: usize = dims[..dims.len() - 1].iter().product();
-        let dev = wt.device();
-        Self::ensure_current(dev)?;
-        let x_dev = if !x.device().same_device(dev) {
-            x.to_device(dev)?
-        } else {
-            x.clone()
-        };
-        let x_cast = if x_dev.dtype() != wt.dtype() {
-            x_dev.to_dtype(wt.dtype())?
-        } else {
-            x_dev
-        };
-        let y = x_cast.reshape((rows, in_dim))?.matmul(&wt)?;
-        let y = if y.dtype() != x.dtype() {
-            y.to_dtype(x.dtype())?
-        } else {
-            y
-        };
-        let mut out_shape = dims[..dims.len() - 1].to_vec();
-        out_shape.push(out_dim);
-        Ok(y.reshape(out_shape)?)
-    }
-
-    pub fn linear_bias(&self, x: &Tensor, name: &str, bias: Option<&str>) -> Result<Tensor> {
-        let y = self.linear(x, name)?;
-        match bias {
-            Some(b) => {
-                let bias_t = self.get(b)?;
-                let bias_cast = if bias_t.dtype() != y.dtype() {
-                    bias_t.to_dtype(y.dtype())?
-                } else {
-                    bias_t
-                };
-                Ok(y.broadcast_add(&bias_cast)?)
-            }
-            None => Ok(y),
-        }
-    }
-
-    pub fn embed(&self, name: &str, ids: &[u32]) -> Result<Tensor> {
-        let w = self
-            .map
-            .get(name)
-            .ok_or_else(|| ModelError::MissingWeight(name.to_string()))?;
-        Self::ensure_current(w.device())?;
-        let idx = Tensor::from_vec(ids.to_vec(), ids.len(), w.device())?;
-        let rows = w.index_select(&idx, 0)?.unsqueeze(0)?; // [1, seq, hidden]
-        if rows.dtype() == DType::F32 {
-            Ok(rows)
-        } else {
-            Ok(rows.to_dtype(DType::F32)?)
-        }
     }
 
     pub fn clear_current_thread_context() {
@@ -163,22 +145,24 @@ impl Weights {
     }
 
     pub fn replace(&mut self, name: &str, tensor: Tensor) -> Result<()> {
-        match self.map.get_mut(name) {
-            Some(slot) => {
-                let t = if tensor.dtype() == self.store {
-                    tensor
-                } else {
-                    tensor.to_dtype(self.store)?
-                };
-                *slot = t;
-                Ok(())
-            }
-            None => Err(ModelError::MissingWeight(name.to_string())),
+        let t = if tensor.dtype() == self.store {
+            tensor
+        } else {
+            tensor.to_dtype(self.store)?
+        };
+        if let Some(slot) = self.map.get_mut(name) {
+            *slot = t;
+            return Ok(());
         }
+        if self.q_map.remove(name).is_some() {
+            self.map.insert(name.to_string(), t);
+            return Ok(());
+        }
+        Err(ModelError::MissingWeight(name.to_string()))
     }
 
     pub fn contains_key(&self, name: &str) -> bool {
-        self.map.contains_key(name)
+        self.map.contains_key(name) || self.q_map.contains_key(name)
     }
 
     /// Migrate resident weights to target device, updating resident dtype
@@ -192,18 +176,32 @@ impl Weights {
         if self.dev.same_device(target) && self.store == target_store {
             return Ok(self.resident_bytes());
         }
-        let mut total_bytes = 0;
         for tensor in self.map.values_mut() {
             let mut t = tensor.to_device(target)?;
-            if t.dtype() != target_store {
+            if t.dtype() != target_store && t.dtype() != DType::F8E4M3 {
                 t = t.to_dtype(target_store)?;
+            } else if t.dtype() == DType::F8E4M3 && !matches!(target, Device::Cuda(_)) {
+                t = t.to_dtype(target_store).or_else(|_| t.to_device(&Device::Cpu)?.to_dtype(target_store))?;
             }
-            total_bytes += t.elem_count() * t.dtype().size_in_bytes();
             *tensor = t;
+        }
+        for qm in self.q_map.values_mut() {
+            match qm.as_ref() {
+                QMatMul::Tensor(t) => {
+                    let mut t = t.to_device(target)?;
+                    if t.dtype() != target_store { t = t.to_dtype(target_store)?; }
+                    *qm = Arc::new(QMatMul::Tensor(t));
+                }
+                QMatMul::TensorF16(t) => {
+                    let t = t.to_device(target)?;
+                    *qm = Arc::new(QMatMul::TensorF16(t));
+                }
+                QMatMul::QTensor(_) => {}
+            }
         }
         self.dev = target.clone();
         self.store = target_store;
-        Ok(total_bytes)
+        Ok(self.resident_bytes())
     }
 }
 
@@ -228,5 +226,19 @@ mod tests {
         // Idempotent migration without redundant tensor copies.
         let bytes2 = w.to_device(&Device::Cpu).unwrap();
         assert_eq!(bytes2, bytes);
+    }
+
+    #[test]
+    fn weights_from_quantized_resident_bytes() {
+        let map = HashMap::new();
+        let mut q_map = HashMap::new();
+        let t = Tensor::zeros((4, 4), DType::F32, &Device::Cpu).unwrap();
+        let qm = Arc::new(QMatMul::Tensor(t));
+        q_map.insert("q1".into(), qm.clone());
+        q_map.insert("q2_alias".into(), qm);
+        let w = Weights::from_quantized(Device::Cpu, DType::F32, map, q_map);
+        assert!(w.contains_key("q1"));
+        assert!(w.contains_key("q2_alias"));
+        assert_eq!(w.resident_bytes(), 4 * 4 * 4);
     }
 }

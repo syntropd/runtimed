@@ -50,6 +50,24 @@ pub fn dequantize_fp8_e4m3(bytes: &[u8]) -> Vec<f32> {
     bytes.iter().map(|&b| lut[b as usize]).collect()
 }
 
+pub fn f32_to_fp8_e4m3(f: f32) -> u8 {
+    if f.is_nan() { return 0x7f; }
+    let sign = if f.is_sign_negative() { 0x80u8 } else { 0u8 };
+    let abs = f.abs();
+    if abs <= 0.0 { return sign; }
+    if abs >= 448.0 { return sign | 0x7e; }
+    let pos = &FP8_E4M3_LUT[..127];
+    match pos.binary_search_by(|v| v.partial_cmp(&abs).unwrap()) {
+        Ok(idx) => sign | (idx as u8),
+        Err(idx) => {
+            if idx == 0 { sign } else if idx >= 127 { sign | 0x7e } else {
+                let pick = if abs - pos[idx - 1] <= pos[idx] - abs { idx - 1 } else { idx };
+                sign | (pick as u8)
+            }
+        }
+    }
+}
+
 pub fn dequantize_fp8_e5m2(bytes: &[u8]) -> Vec<f32> {
     let lut = &*FP8_E5M2_LUT;
     bytes.iter().map(|&b| lut[b as usize]).collect()
@@ -112,6 +130,24 @@ impl Weights {
             if !keep(&mapped) && !keep(&name) {
                 continue;
             }
+            if matches!(view.dtype(), safetensors::Dtype::F8_E4M3) {
+                let shape = view.shape();
+                let t = match dev {
+                    Device::Cuda(_) => Tensor::from_raw_buffer(view.data(), DType::F8E4M3, shape, dev)?,
+                    _ => {
+                        let data = dequantize_fp8_e4m3(view.data());
+                        let t = Tensor::from_vec(data, shape, &Device::Cpu)?;
+                        if store == DType::F32 { t } else { t.to_dtype(store)? }
+                    }
+                };
+                map.insert(mapped, t);
+                continue;
+            }
+            if matches!(view.dtype(), safetensors::Dtype::U32 | safetensors::Dtype::I32) {
+                let t = Tensor::from_raw_buffer(view.data(), DType::U32, view.shape(), dev)?;
+                map.insert(mapped, t);
+                continue;
+            }
             let data: Vec<f32> = match view.dtype() {
                 safetensors::Dtype::F32 => view
                     .data()
@@ -128,7 +164,6 @@ impl Weights {
                     .chunks_exact(2)
                     .map(|c| bf16_to_f32(u16::from_le_bytes([c[0], c[1]])))
                     .collect(),
-                safetensors::Dtype::F8_E4M3 => dequantize_fp8_e4m3(view.data()),
                 safetensors::Dtype::F8_E5M2 => dequantize_fp8_e5m2(view.data()),
                 other => {
                     return Err(ModelError::Config(format!(

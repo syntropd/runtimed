@@ -184,13 +184,15 @@ impl Session {
             Kind::Granite(c) => granite::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
             Kind::Phi3(c) => phi3::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
         };
-        let out_weight = if self.w.contains_key("output.weight") {
-            self.w.get_raw("output.weight")?
+        let key = if self.w.contains_key("output.weight") {
+            "output.weight"
         } else {
-            self.w.get_raw("token_embd.weight")?
+            "token_embd.weight"
         };
-        let idx = Tensor::from_vec(candidate_ids.to_vec(), candidate_ids.len(), self.w.device())?;
-        let w_c = out_weight.index_select(&idx, 0)?;
+        let w_c = self.w.candidate_weights(key, candidate_ids)?;
+        let out_dev = w_c.device();
+        Weights::ensure_current(out_dev)?;
+        let h_n = if !h_n.device().same_device(out_dev) { h_n.to_device(out_dev)? } else { h_n };
         let w_c = if w_c.dtype() != h_n.dtype() { w_c.to_dtype(h_n.dtype())? } else { w_c };
         let mut logits = h_n.matmul(&w_c.t()?)?;
         if let Some(scale) = self.cfg.logit_scale {

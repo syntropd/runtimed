@@ -10,6 +10,7 @@
 mod client;
 pub mod composite;
 mod permit;
+pub mod sizing;
 
 #[cfg(test)]
 mod tests;
@@ -19,3 +20,4 @@ pub use composite::{
     CompositeLeaseClient, CompositeLeasePermit, CompositeSliceAllocation, CompositeSliceRequest,
 };
 pub use permit::LeasePermit;
+pub use sizing::{compute_kv_cache_bytes, compute_lease_bytes, ACTIVATION_HEADROOM_BYTES};

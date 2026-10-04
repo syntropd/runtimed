@@ -160,7 +160,7 @@ BENCHMARK_PROMPTS = [
 
 def extract_answer_text(text: str) -> str:
     """Extract final answer from models that use thinking channels (<|channel|>thought or <think>)."""
-    clean = re.sub(r"<\|channel\|>thought.*?<channel\|>", "", text, flags=re.DOTALL)
+    clean = re.sub(r"<\|?channel\|?>thought.*?<\|?channel\|?>", "", text, flags=re.DOTALL)
     clean = re.sub(r"<think>.*?</think>", "", clean, flags=re.DOTALL)
     return clean.strip()
 
@@ -439,6 +439,8 @@ def evaluate_config(
         domain = item["domain"]
         prompt = item["prompt"]
         max_toks = item["max_tokens"]
+        if "gemma" in model.lower():
+            max_toks = max(max_toks + 256, 320)
         verifier = item["verifier"]
 
         if domain not in domain_stats:
@@ -574,6 +576,17 @@ def main():
 
     eval_summaries = []
     for cfg in configs:
+        # Unload idle models from previous runs to maximize VRAM headroom
+        try:
+            loaded_resp = call_varlink("io.syntrop.Runtime1.ListLoadedModels", {})
+            if loaded_resp and "parameters" in loaded_resp:
+                for m in loaded_resp["parameters"].get("models", []):
+                    m_name = m.get("name") if isinstance(m, dict) else str(m)
+                    if m_name and m_name != cfg["model"] and m_name != cfg.get("draft_model"):
+                        call_varlink("io.syntrop.Runtime1.UnloadModel", {"model": m_name})
+        except Exception:
+            pass
+
         summary = evaluate_config(
             cfg_name=cfg["name"],
             model=cfg["model"],

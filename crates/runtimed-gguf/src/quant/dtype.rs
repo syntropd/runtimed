@@ -53,6 +53,8 @@ impl GgmlDtype {
             Self::Q4_0 => (32, 18),
             Self::Q5_0 => (32, 22),
             Self::Q8_0 => (32, 34),
+            Self::Q2K => (256, 84),
+            Self::Q3K => (256, 110),
             Self::Q4K => (256, 144),
             Self::Q5K => (256, 176),
             Self::Q6K => (256, 210),
@@ -83,10 +85,11 @@ mod tests {
     #[test]
     fn block_geometry() {
         assert_eq!(GgmlDtype::Q8_0.block(), Some((32, 34)));
+        assert_eq!(GgmlDtype::Q2K.block(), Some((256, 84)));
+        assert_eq!(GgmlDtype::Q3K.block(), Some((256, 110)));
         assert_eq!(GgmlDtype::Q4K.block(), Some((256, 144)));
         assert_eq!(GgmlDtype::Q5K.block(), Some((256, 176)));
         assert_eq!(GgmlDtype::Q6K.block(), Some((256, 210)));
         assert_eq!(GgmlDtype::F32.block(), Some((1, 4)));
-        assert_eq!(GgmlDtype::Q3K.block(), None);
     }
 }

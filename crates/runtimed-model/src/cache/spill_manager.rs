@@ -1,4 +1,4 @@
-use super::paged_cache::{PagedKvCache, StorageTier};
+use super::paged::{PagedKvCache, StorageTier};
 use crate::error::Result;
 use candle_core::Device;
 
@@ -19,9 +19,7 @@ impl SpillManager {
                 break;
             }
             if block.tier == StorageTier::L1Vram {
-                block.k = block.k.to_device(&Device::Cpu)?;
-                block.v = block.v.to_device(&Device::Cpu)?;
-                block.device = Device::Cpu;
+                block.to_device(&Device::Cpu)?;
                 block.tier = StorageTier::L2PinnedHost;
                 spilled += 1;
             }
@@ -37,9 +35,7 @@ impl SpillManager {
                 break;
             }
             if block.tier == StorageTier::L2PinnedHost {
-                block.k = block.k.to_device(target_dev)?;
-                block.v = block.v.to_device(target_dev)?;
-                block.device = target_dev.clone();
+                block.to_device(target_dev)?;
                 block.tier = StorageTier::L1Vram;
                 prefetched += 1;
             }
@@ -77,9 +73,7 @@ impl SpillManager {
                 break;
             }
             if block.tier == StorageTier::L1Vram && block.origin_device.same_device(device) {
-                block.k = block.k.to_device(&Device::Cpu)?;
-                block.v = block.v.to_device(&Device::Cpu)?;
-                block.device = Device::Cpu;
+                block.to_device(&Device::Cpu)?;
                 block.tier = StorageTier::L2PinnedHost;
                 spilled += 1;
             }
@@ -95,9 +89,8 @@ impl SpillManager {
                 break;
             }
             if block.tier == StorageTier::L2PinnedHost {
-                block.k = block.k.to_device(&block.origin_device)?;
-                block.v = block.v.to_device(&block.origin_device)?;
-                block.device = block.origin_device.clone();
+                let origin = block.origin_device.clone();
+                block.to_device(&origin)?;
                 block.tier = StorageTier::L1Vram;
                 restored += 1;
             }
@@ -118,9 +111,8 @@ impl SpillManager {
                 break;
             }
             if block.tier == StorageTier::L2PinnedHost && block.origin_device.same_device(device) {
-                block.k = block.k.to_device(&block.origin_device)?;
-                block.v = block.v.to_device(&block.origin_device)?;
-                block.device = block.origin_device.clone();
+                let origin = block.origin_device.clone();
+                block.to_device(&origin)?;
                 block.tier = StorageTier::L1Vram;
                 restored += 1;
             }

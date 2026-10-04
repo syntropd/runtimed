@@ -11,6 +11,7 @@ use crate::weights::Weights;
 use candle_core::Tensor;
 
 pub use crate::arch::qwen2::Cache;
+use crate::ops::rope_norm;
 
 fn layer(
     cfg: &ArchConfig,
@@ -38,20 +39,20 @@ fn layer(
         let heads = y.dim(2)? / lc.head_dim;
         Ok(y.reshape((1, t, heads, lc.head_dim))?.transpose(1, 2)?)
     };
-    let q = split(w.linear(&n, &format!("{pre}.attn_q.weight"))?)?;
-    let k = split(w.linear(&n, &format!("{pre}.attn_k.weight"))?)?;
-    let v = split(w.linear(&n, &format!("{pre}.attn_v.weight"))?)?;
-    let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
-    let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
+    let q_raw = split(w.linear(&n, &format!("{pre}.attn_q.weight"))?)?;
+    let k_raw = split(w.linear(&n, &format!("{pre}.attn_k.weight"))?)?;
+    let v_raw = split(w.linear(&n, &format!("{pre}.attn_v.weight"))?)?;
+    let q = rope_norm(&q_raw, q0, lc.rope_theta, lc.rope_dim)?;
+    let k = rope_norm(&k_raw, q0, lc.rope_theta, lc.rope_dim)?;
 
     // Extend the KV cache and attend over all of it.
     let (k_full, v_full) = match cache.layers[i].take() {
         Some((pk, pv)) => {
             let pk = if pk.device().same_device(dev) { pk } else { pk.to_device(dev)? };
             let pv = if pv.device().same_device(dev) { pv } else { pv.to_device(dev)? };
-            (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v], 2)?)
+            (Tensor::cat(&[&pk, &k], 2)?, Tensor::cat(&[&pv, &v_raw], 2)?)
         }
-        None => (k, v),
+        None => (k, v_raw),
     };
     let total = k_full.dim(2)?;
     let mask = ops::causal_mask(t, total, q0, None, dev)?;

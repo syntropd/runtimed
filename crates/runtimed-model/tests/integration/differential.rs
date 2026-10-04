@@ -186,3 +186,27 @@ fn gemma4_matches_oracle_prefix() {
     }
     assert!(long_rows >= 2, "need >= 2 long oracle rows, got {long_rows}");
 }
+
+#[test]
+fn test_granite_diagnostics() {
+    let p = std::path::Path::new("/var/lib/models/gguf/granite-3.0:8b.gguf");
+    if !p.exists() { return; }
+    let dev = match Device::new_cuda(0) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let (mut model, _file) = runtimed_model::Session::load(p, &dev).expect("load granite");
+    let prompt_ids = [49152, 496, 49153, 8197, 438, 225, 37, 41, 319, 225, 38, 37, 49, 49152, 17594, 49153];
+    let logits = model.forward(&prompt_ids, 0).expect("forward");
+    let last = generate::last_row(&logits).expect("last row");
+    let vals = last.to_vec1::<f32>().expect("vec1");
+    let mut pairs: Vec<(usize, f32)> = vals.iter().copied().enumerate().collect();
+    pairs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    println!("Top 10 tokens from granite.rs:");
+    for &(id, val) in pairs.iter().take(10) {
+        println!("  id={id} logit={val}");
+    }
+    let tok = sample::greedy(&last).expect("greedy");
+    println!("DIAGNOSTIC GRANITE PREDICTED TOKEN (CUDA): {tok}");
+    assert_eq!(tok, 37, "granite must predict oracle token 37");
+}

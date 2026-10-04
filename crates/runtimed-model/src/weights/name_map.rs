@@ -33,6 +33,18 @@ fn map_layer_submodule(sub: &str) -> Option<String> {
         (s, "weight")
     } else if let Some(s) = sub.strip_suffix(".bias") {
         (s, "bias")
+    } else if let Some(s) = sub.strip_suffix(".weight_scale") {
+        (s, "weight.scale")
+    } else if let Some(s) = sub.strip_suffix(".weight_scale_inv") {
+        (s, "weight.scale")
+    } else if let Some(s) = sub.strip_suffix(".scale") {
+        (s, "weight.scale")
+    } else if let Some(s) = sub.strip_suffix(".scales") {
+        (s, "scales")
+    } else if let Some(s) = sub.strip_suffix(".marlin_scales") {
+        (s, "marlin_scales")
+    } else if let Some(s) = sub.strip_suffix(".marlin_packed") {
+        (s, "marlin_packed")
     } else {
         (sub, "weight")
     };

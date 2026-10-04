@@ -57,7 +57,7 @@ impl Weights {
         let total_params: u64 = file.tensors.iter().map(|t| t.n_elements as u64).sum();
         let split_cuda = matches!(dev, Device::Cuda(_))
             && Self::cuda_available(1)
-            && total_params > 7_000_000_000;
+            && total_params > 8_000_000_000;
         let sec_dev = if split_cuda { Device::new_cuda(1).ok() } else { None };
 
         let max_layer = file.tensors.iter().filter_map(|t| {

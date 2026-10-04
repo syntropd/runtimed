@@ -172,13 +172,7 @@ pub fn speculative_step(
         if hit_eos {
             (draft_head_row.clone(), target_head_row.clone())
         } else {
-            Weights::ensure_current(target.device())?;
-            let t_logits = target.forward(&[corr], corr_pos)?;
-            let nt = last_row(&t_logits)?;
-            Weights::ensure_current(draft.device())?;
-            let d_logits = draft.forward(&[corr], corr_pos)?;
-            let nd = last_row(&d_logits)?;
-            (nd, nt)
+            forward_dual_next(target, draft, &[corr], corr_pos, &[corr], corr_pos)?
         }
     } else if hit_eos {
         Weights::ensure_current(target.device())?;
@@ -188,14 +182,8 @@ pub fn speculative_step(
         (draft_head_row.clone(), target_head_row.clone())
     } else {
         let bonus = *accepted.last().unwrap_or(&0);
-        Weights::ensure_current(target.device())?;
-        let t_logits = target.forward(&[bonus], current_pos + draft_tokens.len())?;
-        let nt = last_row(&t_logits)?;
         let last_draft = *draft_tokens.last().unwrap_or(&0);
-        Weights::ensure_current(draft.device())?;
-        let d_logits = draft.forward(&[last_draft, bonus], current_pos + draft_tokens.len() - 1)?;
-        let nd = last_row(&d_logits)?;
-        (nd, nt)
+        forward_dual_next(target, draft, &[bonus], current_pos + draft_tokens.len(), &[last_draft, bonus], current_pos + draft_tokens.len() - 1)?
     };
 
     Ok((
@@ -210,6 +198,31 @@ pub fn speculative_step(
     ))
 }
 
+fn forward_dual_next(
+    target: &mut Session, draft: &mut Session,
+    t_toks: &[u32], t_pos: usize, d_toks: &[u32], d_pos: usize,
+) -> Result<(Tensor, Tensor)> {
+    if !target.device().same_device(draft.device()) {
+        std::thread::scope(|s| {
+            let th = s.spawn(|| {
+                Weights::ensure_current(target.device())?;
+                last_row(&target.forward(t_toks, t_pos)?)
+            });
+            let dh = s.spawn(|| {
+                Weights::ensure_current(draft.device())?;
+                last_row(&draft.forward(d_toks, d_pos)?)
+            });
+            Ok((dh.join().unwrap()?, th.join().unwrap()?))
+        })
+    } else {
+        Weights::ensure_current(target.device())?;
+        let nt = last_row(&target.forward(t_toks, t_pos)?)?;
+        Weights::ensure_current(draft.device())?;
+        let nd = last_row(&draft.forward(d_toks, d_pos)?)?;
+        Ok((nd, nt))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,35 +232,18 @@ mod tests {
         let s = SpeculativeStep { tokens: vec![1, 2, 3], accepted_count: 2, proposed_count: 2, hit_eos: false };
         assert_eq!(s.tokens.len(), 3);
         assert_eq!(s.accepted_count, 2);
-    }
-
-    #[test]
-    fn test_residual_math() {
-        let p_target = [0.1f32, 0.7, 0.2];
-        let q_draft = [0.4f32, 0.3, 0.3];
-        assert!(((p_target[0] / q_draft[0]).min(1.0) - 0.25).abs() < 1e-5);
-        let res: Vec<f32> = p_target.iter().zip(q_draft.iter()).map(|(p, q)| (p - q).max(0.0)).collect();
+        let (pt, qd) = ([0.1f32, 0.7, 0.2], [0.4f32, 0.3, 0.3]);
+        assert!(((pt[0] / qd[0]).min(1.0) - 0.25).abs() < 1e-5);
+        let res: Vec<f32> = pt.iter().zip(qd.iter()).map(|(p, q)| (p - q).max(0.0)).collect();
         assert_eq!(res[0], 0.0);
         assert!((res[1] - 0.4).abs() < 1e-5);
     }
 
     #[test]
-    fn test_sample_from_probs_avoids_zero_prob_tails() {
+    fn test_sample_and_nan_resilience() {
         assert_eq!(sample_from_probs(&[1.0f32, 0.0, 0.0], || 0.999999), 0);
-    }
-
-    #[test]
-    fn test_zero_prob_draft_and_nan_resilience() {
-        let (p_zero, q_zero) = (0.0f32, 0.5f32);
-        assert!(p_zero <= 0.0 && q_zero > 0.0);
-        let (p_nan, q_val) = (f32::NAN, 0.3f32);
-        let diff = if p_nan.is_nan() || q_val.is_nan() { 0.0 } else { (p_nan - q_val).max(0.0) };
+        let diff = if f32::NAN.is_nan() { 0.0 } else { (f32::NAN - 0.3f32).max(0.0) };
         assert_eq!(diff, 0.0);
-    }
-
-    #[test]
-    fn test_rejection_prob_guaranteed_acceptance() {
-        let (p, q) = (0.6f32, 0.4f32);
-        assert!(p >= q);
+        assert_eq!(sample_from_probs(&[0.3f32, 0.7f32], || 0.5), 1);
     }
 }

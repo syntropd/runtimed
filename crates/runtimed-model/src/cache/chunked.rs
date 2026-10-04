@@ -47,51 +47,38 @@ impl LayerKv {
         let head_dim = k.dim(3)?;
         let dt = k.dtype();
 
-        // Fast path: single token decode step with available capacity on same device
-        if t == 1 && self.len < self.cap && self.k_buf.device().same_device(dev) {
-            let ids = Tensor::full(self.len as u32, k.shape(), dev)?.contiguous()?;
+        let needed = self.len + t;
+        // Fast path: direct in-place contiguous write within preallocated capacity
+        if needed <= self.cap && self.k_buf.device().same_device(dev) {
             let k_in = if k.dtype() != self.k_buf.dtype() { k.to_dtype(self.k_buf.dtype())? } else { k.clone() };
             let v_in = if v.dtype() != self.v_buf.dtype() { v.to_dtype(self.v_buf.dtype())? } else { v.clone() };
             let k_in = if !k_in.is_contiguous() { k_in.contiguous()? } else { k_in };
             let v_in = if !v_in.is_contiguous() { v_in.contiguous()? } else { v_in };
-            self.k_buf.scatter_set(&ids, &k_in, 2)?;
-            self.v_buf.scatter_set(&ids, &v_in, 2)?;
-            self.len += 1;
+            self.k_buf.slice_set(&k_in, 2, self.len)?;
+            self.v_buf.slice_set(&v_in, 2, self.len)?;
+            self.len = needed;
             return self.current();
         }
 
         // Slow path: expand capacity or device migration
-        let needed = self.len + t;
-        if needed > self.cap || !self.k_buf.device().same_device(dev) {
-            let new_cap = (needed + INITIAL_CAPACITY).next_power_of_two();
-            let k_cur = self.k_buf.narrow(2, 0, self.len)?;
-            let v_cur = self.v_buf.narrow(2, 0, self.len)?;
-            let k_cur = if !k_cur.device().same_device(dev) { k_cur.to_device(dev)? } else { k_cur };
-            let v_cur = if !v_cur.device().same_device(dev) { v_cur.to_device(dev)? } else { v_cur };
-            let pad_len = new_cap - needed;
-            let k_in = if !k.is_contiguous() { k.contiguous()? } else { k.clone() };
-            let v_in = if !v.is_contiguous() { v.contiguous()? } else { v.clone() };
-            if pad_len > 0 {
-                let pad = Tensor::zeros((1, n_kv, pad_len, head_dim), dt, dev)?;
-                self.k_buf = Tensor::cat(&[&k_cur, &k_in, &pad], 2)?.contiguous()?;
-                self.v_buf = Tensor::cat(&[&v_cur, &v_in, &pad], 2)?.contiguous()?;
-            } else {
-                self.k_buf = Tensor::cat(&[&k_cur, &k_in], 2)?.contiguous()?;
-                self.v_buf = Tensor::cat(&[&v_cur, &v_in], 2)?.contiguous()?;
-            }
-            self.cap = new_cap;
-            self.len = needed;
+        let new_cap = (needed + INITIAL_CAPACITY).next_power_of_two();
+        let k_cur = self.k_buf.narrow(2, 0, self.len)?;
+        let v_cur = self.v_buf.narrow(2, 0, self.len)?;
+        let k_cur = if !k_cur.device().same_device(dev) { k_cur.to_device(dev)? } else { k_cur };
+        let v_cur = if !v_cur.device().same_device(dev) { v_cur.to_device(dev)? } else { v_cur };
+        let pad_len = new_cap - needed;
+        let k_in = if !k.is_contiguous() { k.contiguous()? } else { k.clone() };
+        let v_in = if !v.is_contiguous() { v.contiguous()? } else { v.clone() };
+        if pad_len > 0 {
+            let pad = Tensor::zeros((1, n_kv, pad_len, head_dim), dt, dev)?;
+            self.k_buf = Tensor::cat(&[&k_cur, &k_in, &pad], 2)?.contiguous()?;
+            self.v_buf = Tensor::cat(&[&v_cur, &v_in, &pad], 2)?.contiguous()?;
         } else {
-            for step in 0..t {
-                let idx = self.len + step;
-                let ids = Tensor::full(idx as u32, (1, n_kv, 1, head_dim), dev)?.contiguous()?;
-                let ks = k.narrow(2, step, 1)?.contiguous()?;
-                let vs = v.narrow(2, step, 1)?.contiguous()?;
-                self.k_buf.scatter_set(&ids, &ks, 2)?;
-                self.v_buf.scatter_set(&ids, &vs, 2)?;
-            }
-            self.len = needed;
+            self.k_buf = Tensor::cat(&[&k_cur, &k_in], 2)?.contiguous()?;
+            self.v_buf = Tensor::cat(&[&v_cur, &v_in], 2)?.contiguous()?;
         }
+        self.cap = new_cap;
+        self.len = needed;
         self.current()
     }
 

@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "8ad5beb",
+ "rev": "2985441",
  "dirty": true,
  "pages": [
   {
@@ -943,7 +943,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/chunked.rs",
-   "lines": 177,
+   "lines": 164,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1090,7 +1090,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
-   "lines": 253,
+   "lines": 249,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3

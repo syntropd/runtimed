@@ -1,6 +1,6 @@
 //! Speculative acceleration engine coordinating heterogeneous draft and target models.
 
-use crate::engine::generator::{finish, GenerationRequest, GenerationResult, Rng};
+use crate::engine::generator::{finish, text_prompt_ids, GenerationRequest, GenerationResult, Rng};
 use crate::error::RuntimedError;
 use crate::model::meta::EngineEntry;
 use candle_core::Tensor;
@@ -22,7 +22,7 @@ pub fn generate_speculative(
     }
 
     let start = Instant::now();
-    let prompt_ids = target_entry.tokenizer.encode(&request.prompt, target_entry.add_special)?;
+    let prompt_ids = text_prompt_ids(&target_entry.tokenizer, &request.prompt, target_entry.add_special)?;
 
     if prompt_ids.len() > target_entry.meta.context_window {
         return Err(RuntimedError::ContextExceeded {

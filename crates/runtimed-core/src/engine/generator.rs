@@ -64,7 +64,7 @@ pub(super) fn entropy_seed() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x243F_6A88_85A3_08D3) | 1
 }
 
-fn text_prompt_ids(
+pub(crate) fn text_prompt_ids(
     tokenizer: &EngineTokenizer,
     prompt: &str,
     add_special: bool,

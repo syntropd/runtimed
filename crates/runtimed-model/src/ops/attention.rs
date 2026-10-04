@@ -63,7 +63,7 @@ pub fn causal_mask(
 /// Repeat KV heads `n_rep` times along dim 1 (`[B, Hv, T, D]`).
 fn repeat_kv_heads(kv: &Tensor, n_rep: usize) -> Result<Tensor> {
     if n_rep == 1 {
-        return Ok(kv.clone());
+        return if kv.is_contiguous() { Ok(kv.clone()) } else { Ok(kv.contiguous()?) };
     }
     let hv = kv.dim(1)?;
     let idx = get_gqa_index(hv, n_rep, kv.device())?;

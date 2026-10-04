@@ -9,6 +9,14 @@ pub const BLOCK_SIZE: usize = 16;
 pub enum StorageTier {
     L1Vram,
     L2PinnedHost,
+    PinnedHost,
+}
+
+impl StorageTier {
+    #[inline]
+    pub fn is_host(&self) -> bool {
+        matches!(self, StorageTier::L2PinnedHost | StorageTier::PinnedHost)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

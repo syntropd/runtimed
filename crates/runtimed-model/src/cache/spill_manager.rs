@@ -20,7 +20,7 @@ impl SpillManager {
             }
             if block.tier == StorageTier::L1Vram {
                 block.to_device(&Device::Cpu)?;
-                block.tier = StorageTier::L2PinnedHost;
+                block.tier = StorageTier::PinnedHost;
                 spilled += 1;
             }
         }
@@ -34,7 +34,7 @@ impl SpillManager {
             if prefetched >= count {
                 break;
             }
-            if block.tier == StorageTier::L2PinnedHost {
+            if block.tier.is_host() {
                 block.to_device(target_dev)?;
                 block.tier = StorageTier::L1Vram;
                 prefetched += 1;
@@ -74,7 +74,7 @@ impl SpillManager {
             }
             if block.tier == StorageTier::L1Vram && block.origin_device.same_device(device) {
                 block.to_device(&Device::Cpu)?;
-                block.tier = StorageTier::L2PinnedHost;
+                block.tier = StorageTier::PinnedHost;
                 spilled += 1;
             }
         }
@@ -88,7 +88,7 @@ impl SpillManager {
             if restored >= count {
                 break;
             }
-            if block.tier == StorageTier::L2PinnedHost {
+            if block.tier.is_host() {
                 let origin = block.origin_device.clone();
                 block.to_device(&origin)?;
                 block.tier = StorageTier::L1Vram;
@@ -110,7 +110,7 @@ impl SpillManager {
             if restored >= count {
                 break;
             }
-            if block.tier == StorageTier::L2PinnedHost && block.origin_device.same_device(device) {
+            if block.tier.is_host() && block.origin_device.same_device(device) {
                 let origin = block.origin_device.clone();
                 block.to_device(&origin)?;
                 block.tier = StorageTier::L1Vram;

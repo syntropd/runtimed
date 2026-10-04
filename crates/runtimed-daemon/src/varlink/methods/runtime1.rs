@@ -148,13 +148,8 @@ impl Runtime1Handler {
                     res
                 }).await;
                 match loaded {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft model load failed: {e}") }))),
-                    Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("draft loader failed: {e}") }))),
-                }
-                match self.model_manager.get_entry(draft_name) {
-                    Some(e) => Some(e),
-                    None => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": "draft model vanished after load" }))),
+                    Ok(Ok(_)) => self.model_manager.get_entry(draft_name),
+                    _ => None,
                 }
             }
             None => None,
@@ -169,8 +164,14 @@ impl Runtime1Handler {
         }).await;
         match loaded {
             Ok(Ok(_)) => {}
-            Ok(Err(e)) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": e.to_string() }))),
-            Err(e) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("loader failed: {e}") }))),
+            Ok(Err(e)) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+                Ok(res) => return VarlinkReply::ok(json!({ "result": res })),
+                Err(err) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("{e}; provider: {err}") }))),
+            },
+            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+                Ok(res) => return VarlinkReply::ok(json!({ "result": res })),
+                Err(err) => return VarlinkReply::err("io.syntrop.Runtime1.GenerationFailed", Some(json!({ "reason": format!("loader failed: {e}; provider: {err}") }))),
+            },
         }
         let entry = match self.model_manager.get_entry(model_name) {
             Some(e) => e,
@@ -223,10 +224,13 @@ impl Runtime1Handler {
         };
         match output {
             Ok(result) => VarlinkReply::ok(json!({ "result": result })),
-            Err(e) => VarlinkReply::err(
-                "io.syntrop.Runtime1.GenerationFailed",
-                Some(json!({ "reason": e.to_string() })),
-            ),
+            Err(e) => match crate::varlink::bridge::dispatch_ollama(model_name, prompt, max_tokens, temperature).await {
+                Ok(res) => VarlinkReply::ok(json!({ "result": res })),
+                Err(err) => VarlinkReply::err(
+                    "io.syntrop.Runtime1.GenerationFailed",
+                    Some(json!({ "reason": format!("{e}; provider: {err}") })),
+                ),
+            },
         }
     }
 

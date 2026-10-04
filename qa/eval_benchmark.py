@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SOCKET_PATH = os.environ.get("SYNTROP_RUNTIMED_SOCKET", "/run/syntrop/io.syntrop.Runtime1")
@@ -162,6 +163,8 @@ def extract_answer_text(text: str) -> str:
     """Extract final answer from models that use thinking channels (<|channel|>thought or <think>)."""
     clean = re.sub(r"<\|?channel\|?>thought.*?<\|?channel\|?>", "", text, flags=re.DOTALL)
     clean = re.sub(r"<think>.*?</think>", "", clean, flags=re.DOTALL)
+    if "</think>" in text:
+        clean = text.split("</think>")[-1].strip()
     return clean.strip()
 
 
@@ -323,6 +326,21 @@ def unload_all_except(keep: List[str]) -> None:
             name = m.get("name")
             if name and name not in keep:
                 unload_model(name)
+    try:
+        req = urllib.request.Request("http://127.0.0.1:11434/api/ps")
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read().decode())
+            for m in data.get("models", []):
+                m_name = m.get("name", "")
+                if m_name and not any(k in m_name for k in keep if k):
+                    unload_req = urllib.request.Request(
+                        "http://127.0.0.1:11434/api/generate",
+                        data=json.dumps({"model": m_name, "keep_alive": 0}).encode(),
+                        headers={"Content-Type": "application/json"}
+                    )
+                    urllib.request.urlopen(unload_req, timeout=5)
+    except Exception:
+        pass
 
 
 def call_syntropctl(model: str, prompt: str, max_tokens: int, temperature: float = 0.0) -> Optional[Dict[str, Any]]:
@@ -439,8 +457,11 @@ def evaluate_config(
         domain = item["domain"]
         prompt = item["prompt"]
         max_toks = item["max_tokens"]
-        if "gemma" in model.lower():
-            max_toks = max(max_toks + 256, 320)
+        if any(k in model.lower() for k in ["qwen3.5", "gemma", "muse"]):
+            if domain == "Code Generation":
+                max_toks = 896
+            else:
+                max_toks = max(max_toks + 512, 640)
         verifier = item["verifier"]
 
         if domain not in domain_stats:
@@ -494,7 +515,7 @@ def evaluate_config(
             dstat["correct"] += 1
 
         status_str = "PASS" if passed else "FAIL"
-        print(f"  [{status_str}] {qid:<16} | {c_toks:>3} toks | {d_ms:>6.1f} ms | {tok_per_sec:>6.1f} tok/s | TTFT: {ttft_ms:>5.1f} ms | Qual: {quality_score:>5.1f}% | response: {repr(text[:40])}")
+        print(f"  [{status_str}] {qid:<16} | {c_toks:>3} toks | {d_ms:>6.1f} ms | {tok_per_sec:>6.1f} tok/s | TTFT: {ttft_ms:>5.1f} ms | Qual: {quality_score:>5.1f}% | response: {repr(text[:40])}", flush=True)
 
         results.append({
             "id": qid,
@@ -539,6 +560,155 @@ def evaluate_config(
     }
 
 
+DECISION_BENCHMARK_PROMPTS = [
+    {
+        "id": "dec_oom_risk",
+        "domain": "System Triage",
+        "state": "Kernel alert: cgroup memory usage at 99.4%, psi memory some 78%, worker-3 allocating 8GB.",
+        "question_key": "oom_risk",
+        "question": {
+            "type": "bool",
+            "instructions": "Is an out-of-memory kill imminent?",
+        },
+        "verifier": lambda ans: ans.get("bool") is True,
+    },
+    {
+        "id": "dec_disk_healthy",
+        "domain": "Hardware Health",
+        "state": "SMART health check on nvme0n1: 0 reallocated sectors, temperature 38C, wear level 2%.",
+        "question_key": "disk_healthy",
+        "question": {
+            "type": "bool",
+            "instructions": "Is the NVMe storage drive healthy and operating normally?",
+        },
+        "verifier": lambda ans: ans.get("bool") is True,
+    },
+    {
+        "id": "dec_net_fault",
+        "domain": "Network Triage",
+        "state": "DNS resolution failing on eth0. Default route unreachable. Packet loss 100% to gateway 192.168.1.1.",
+        "question_key": "fault_domain",
+        "question": {
+            "type": "choice",
+            "instructions": "Identify the primary root cause failure domain.",
+            "choices": ["network_down", "disk_full", "permission_denied", "oom_killed"],
+        },
+        "verifier": lambda ans: ans.get("choice") == "network_down",
+    },
+    {
+        "id": "dec_perm_fault",
+        "domain": "Security & Permissions",
+        "state": "systemd[1]: auth-sync.service: Failed at step EXEC spawning /usr/local/bin/sync: Permission denied (code 204/PERM).",
+        "question_key": "fault_domain",
+        "question": {
+            "type": "choice",
+            "instructions": "Identify the primary root cause failure domain.",
+            "choices": ["permission_denied", "disk_full", "network_down", "oom_killed"],
+        },
+        "verifier": lambda ans: ans.get("choice") == "permission_denied",
+    },
+    {
+        "id": "dec_severity_outage",
+        "domain": "Incident Severity",
+        "state": "Production API gateway returning HTTP 500 to all external users. Database primary node down.",
+        "question_key": "severity",
+        "question": {
+            "type": "score",
+            "instructions": "Rate the severity from 0 to 4.",
+            "criteria": ["Low impact", "Minor degradation", "Moderate impact", "Major outage", "Critical disaster"],
+        },
+        "verifier": lambda ans: ans.get("score", 0.0) >= 2.5,
+    },
+    {
+        "id": "dec_severity_routine",
+        "domain": "Incident Severity",
+        "state": "Log rotation completed successfully. Routine systemd timer ran backup with 0 errors.",
+        "question_key": "severity",
+        "question": {
+            "type": "score",
+            "instructions": "Rate the severity from 0 to 4.",
+            "criteria": ["Routine / Normal", "Minor warning", "Moderate issue", "High urgency", "Emergency"],
+        },
+        "verifier": lambda ans: ans.get("score", 5.0) <= 1.5,
+    },
+]
+
+
+def evaluate_decision_config(cfg_name: str, model: str) -> Dict[str, Any]:
+    print(f"\n=======================================================")
+    print(f"Benchmarking Decision Engine: {cfg_name} (Model: {model})")
+    print(f"=======================================================")
+
+    call_varlink("io.syntrop.Decision1.Decide", {
+        "model": model,
+        "state": "Warmup state",
+        "questions": {"warmup": {"type": "bool", "instructions": "Is warmup ready?"}}
+    })
+
+    results = []
+    total_ms = 0.0
+    correct = 0
+
+    for item in DECISION_BENCHMARK_PROMPTS:
+        qid = item["id"]
+        qkey = item["question_key"]
+        state = item["state"]
+        q_obj = item["question"]
+        verifier = item["verifier"]
+
+        t0 = time.perf_counter()
+        resp = call_varlink("io.syntrop.Decision1.Decide", {
+            "model": model,
+            "state": state,
+            "questions": {qkey: q_obj}
+        })
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        total_ms += elapsed_ms
+
+        ans = {}
+        passed = False
+        if resp and "answers" in resp and qkey in resp["answers"]:
+            ans = resp["answers"][qkey]
+            passed = verifier(ans)
+        elif resp and "parameters" in resp and "answers" in resp["parameters"]:
+            ans = resp["parameters"]["answers"].get(qkey, {})
+            passed = verifier(ans)
+
+        if passed:
+            correct += 1
+
+        status = "PASS" if passed else "FAIL"
+        print(f"  [{status}] {qid:<22} | {elapsed_ms:>6.1f} ms | Ans: {repr(ans)}", flush=True)
+        results.append({
+            "id": qid,
+            "passed": passed,
+            "duration_ms": elapsed_ms,
+            "answer": ans,
+        })
+
+    n = len(DECISION_BENCHMARK_PROMPTS)
+    avg_latency = total_ms / n if n > 0 else 0.0
+    decisions_per_sec = (n / (total_ms / 1000.0)) if total_ms > 0 else 0.0
+    acc = (correct / n) * 100.0 if n > 0 else 0.0
+
+    print("-------------------------------------------------------")
+    print(f"Summary for {cfg_name}:")
+    print(f"  Total Duration:     {total_ms:.1f} ms")
+    print(f"  Average Latency:    {avg_latency:.1f} ms")
+    print(f"  Throughput:         {decisions_per_sec:.2f} dec/s")
+    print(f"  Accuracy Score:     {acc:.1f}% ({correct}/{n})")
+
+    return {
+        "name": cfg_name,
+        "model": model,
+        "total_duration_ms": total_ms,
+        "avg_latency_ms": avg_latency,
+        "dec_per_sec": decisions_per_sec,
+        "accuracy": acc,
+        "results": results,
+    }
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="runtimed Quality & Speed Benchmark")
@@ -560,18 +730,17 @@ def main():
         })
     else:
         configs = [
-            {"name": "qwen2.5:0.5b (Draft Baseline)", "model": "qwen2.5:0.5b", "draft_model": None, "backend": "cuda:0"},
-            {"name": "phi-3.5-mini:3.8b", "model": "phi-3.5-mini:3.8b", "draft_model": None, "backend": "cuda:0"},
-            {"name": "gemma-4-E2B-it-Q4_K_M", "model": "gemma-4-E2B-it-Q4_K_M", "draft_model": None, "backend": "cuda:0"},
-            {"name": "granite-3.0:8b (Dual-GPU Partitioned)", "model": "granite-3.0:8b", "draft_model": None, "backend": "cuda:0"},
-            {"name": "qwen2.5:7b (Primary Standard)", "model": "qwen2.5:7b", "draft_model": None, "backend": "cuda:0"},
-            {
-                "name": "qwen2.5:7b + 0.5b (Dual-GPU Speculative: cuda:0 + cuda:1)",
-                "model": "qwen2.5:7b",
-                "draft_model": "qwen2.5:0.5b",
-                "backend": "cuda:0",
-                "draft_backend": "cuda:1",
-            },
+            # 1. Qwen 3.5 Family
+            {"name": "Qwen 3.5: 0.8B (Draft Baseline)", "model": "qwen3.5:0.8b", "draft_model": None, "backend": "cuda:1"},
+            {"name": "Qwen 3.5: 9B (Primary Single-GPU)", "model": "qwen3.5:9b", "draft_model": None, "backend": "cuda:0"},
+            {"name": "Qwen 3.5: 9B + 0.8B (Dual-GPU Speculative)", "model": "qwen3.5:9b-spec", "draft_model": None, "backend": "cuda:0"},
+            {"name": "Qwen 3.5: 27B (Dual-GPU Layer-Split)", "model": "qwen3.5:27b", "draft_model": None, "backend": "cuda:0"},
+            {"name": "Qwen 3.5: 35B (Dual-GPU Layer-Split)", "model": "qwen3.5:35b", "draft_model": None, "backend": "cuda:0"},
+            # 2. Gemma 4 Scaled Tier
+            {"name": "Gemma 4: 26B-A4B-it (MoE 26B Total, 4B Active)", "model": "gemma4:26b", "draft_model": None, "backend": "cuda:0"},
+            {"name": "Gemma 4: 31B-it (Dense 31B Dual-GPU)", "model": "gemma4:31b", "draft_model": None, "backend": "cuda:0"},
+            # 3. Muse Family
+            {"name": "Muse-Glimmer-30B (Meta Open-Weight Distilled)", "model": "muse-glimmer:latest", "draft_model": None, "backend": "cuda:0"},
         ]
 
     eval_summaries = []
@@ -626,6 +795,27 @@ def main():
             avg_q = d["quality"] / d["total"] if d["total"] > 0 else 0.0
             row.append(f"{avg_q:.0f}% ({d['correct']}/{d['total']})")
         print("| " + " | ".join(row) + " |")
+
+    # 4. Clef Family (DO LAST)
+    decision_configs = [
+        {"name": "Clef Flash (9B Decision Engine)", "model": "clef-flash"},
+        {"name": "Clef (27B Dual-GPU Decision Engine)", "model": "clef"},
+    ]
+    dec_summaries = []
+    if not args.single:
+        for dcfg in decision_configs:
+            dsummary = evaluate_decision_config(dcfg["name"], dcfg["model"])
+            dec_summaries.append(dsummary)
+
+        print("\n\n" + "#" * 60)
+        print("## Clef Family Deterministic Decision Benchmark (DO LAST)")
+        print("#" * 60 + "\n")
+
+        print("| Configuration | Model | Decisions / sec | Latency (ms) | Accuracy (%) | Verification Status |")
+        print("| :--- | :--- | :---: | :---: | :---: | :---: |")
+        for ds in dec_summaries:
+            status = "VERIFIED" if ds["accuracy"] >= 80.0 else "UNVERIFIED"
+            print(f"| **{ds['name']}** | `{ds['model']}` | **{ds['dec_per_sec']:.2f} dec/s** | {ds['avg_latency_ms']:.1f} ms | **{ds['accuracy']:.1f}%** | {status} |")
 
 
 if __name__ == "__main__":

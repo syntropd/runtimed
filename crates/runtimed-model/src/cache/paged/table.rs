@@ -63,7 +63,8 @@ impl PagedKvCache {
             return Ok(());
         }
         self.target_dtype = k.dtype();
-        let tier = match dev { Device::Cuda(_) => StorageTier::L1Vram, _ => StorageTier::L2PinnedHost };
+        let pin = std::env::var_os("RUNTIMED_KV_CACHE_PINNED").is_some() || std::env::var_os("RUNTIMED_KV_CACHE_HOST").is_some();
+        let (adev, tier) = if pin { (&Device::Cpu, StorageTier::PinnedHost) } else { match dev { Device::Cuda(_) => (dev, StorageTier::L1Vram), _ => (&Device::Cpu, StorageTier::PinnedHost) } };
 
         let mut offset = 0;
         while offset < n_tokens {
@@ -78,7 +79,7 @@ impl PagedKvCache {
                 let cur = self.layer_token_count(layer);
                 let take = BLOCK_SIZE.min(n_tokens - offset);
                 let new_id = self.allocate_block_with_offset(
-                    dev, tier, k.narrow(2, offset, take)?, v.narrow(2, offset, take)?, take, cur,
+                    adev, tier, k.narrow(2, offset, take)?, v.narrow(2, offset, take)?, take, cur,
                 )?;
                 self.layer_tables[layer].push(new_id);
                 offset += take;
@@ -157,7 +158,7 @@ impl PagedKvCache {
     }
 
     pub fn count_tier_blocks(&self, tier: StorageTier) -> usize {
-        self.blocks.iter().filter(|b| b.tier == tier).count()
+        self.blocks.iter().filter(|b| if tier.is_host() { b.tier.is_host() } else { b.tier == tier }).count()
     }
 }
 

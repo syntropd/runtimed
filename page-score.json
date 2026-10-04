@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "a9e5294",
+ "rev": "d696016",
  "dirty": true,
  "pages": [
   {
@@ -515,6 +515,48 @@
    "reach": 2
   },
   {
+   "path": "./crates/runtimed-daemon/src/varlink/bridge/dispatch.rs",
+   "lines": 148,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/bridge/mod.rs",
+   "lines": 5,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/decision/decision1.rs",
+   "lines": 104,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/decision/interface.rs",
+   "lines": 41,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/decision/mod.rs",
+   "lines": 8,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/varlink/decision/systemone.rs",
+   "lines": 205,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
    "path": "./crates/runtimed-daemon/src/varlink/methods/decide.rs",
    "lines": 127,
    "bin_bytes": null,
@@ -607,14 +649,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 238,
+   "lines": 242,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/service.rs",
-   "lines": 128,
+   "lines": 132,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -628,7 +670,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/mod.rs",
-   "lines": 14,
+   "lines": 17,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -673,14 +715,14 @@
    "lines": 57,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 17
+   "reach": 18
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/server/server.rs",
-   "lines": 242,
+   "lines": 246,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 17
+   "reach": 18
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/telemetry/interface.rs",
@@ -971,7 +1013,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/paged/block.rs",
-   "lines": 187,
+   "lines": 195,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -992,7 +1034,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/cache/paged/table.rs",
-   "lines": 254,
+   "lines": 255,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

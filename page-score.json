@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "0e89719",
+ "rev": "5ab9b77",
  "dirty": true,
  "pages": [
   {
@@ -950,7 +950,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 233,
+   "lines": 253,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4

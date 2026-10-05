@@ -54,13 +54,13 @@ impl Cache {
 
     pub fn spill_layers(&mut self, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } if kv.spill_to_cpu()? { n += 1; } }
+        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } else if kv.spill_to_cpu()? { n += 1; } }
         Ok(n)
     }
 
     pub fn prefetch_layers(&mut self, dev: &Device, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } if kv.prefetch_to_dev(dev)? { n += 1; } }
+        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } else if kv.prefetch_to_dev(dev)? { n += 1; } }
         Ok(n)
     }
 }

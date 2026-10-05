@@ -18,14 +18,8 @@ impl Cache {
         Self { entries: (0..n_layer).map(|_| None).collect() }
     }
 
-    pub fn reset(&mut self) {
-        for slot in self.entries.iter_mut() { *slot = None; }
-    }
-
-    pub fn truncate(&mut self, target_len: usize) {
-        for slot in self.entries.iter_mut().flatten() { slot.truncate(target_len); }
-    }
-
+    pub fn reset(&mut self) { for slot in self.entries.iter_mut() { *slot = None; } }
+    pub fn truncate(&mut self, target_len: usize) { for slot in self.entries.iter_mut().flatten() { slot.truncate(target_len); } }
     pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, dev: &Device) -> Result<(Tensor, Tensor)> {
         self.append_with_substrate(default_substrate(), layer, k, v, dev)
     }
@@ -60,26 +54,18 @@ impl Cache {
 
     pub fn spill_layers(&mut self, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for kv in self.entries.iter_mut().flatten() {
-            if n >= max_layers { break; }
-            if kv.spill_to_cpu()? { n += 1; }
-        }
+        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } if kv.spill_to_cpu()? { n += 1; } }
         Ok(n)
     }
 
     pub fn prefetch_layers(&mut self, dev: &Device, max_layers: usize) -> Result<usize> {
         let mut n = 0;
-        for kv in self.entries.iter_mut().flatten() {
-            if n >= max_layers { break; }
-            if kv.prefetch_to_dev(dev)? { n += 1; }
-        }
+        for kv in self.entries.iter_mut().flatten() { if n >= max_layers { break; } if kv.prefetch_to_dev(dev)? { n += 1; } }
         Ok(n)
     }
 }
 
-pub(crate) fn per_layer_inputs(
-    cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor,
-) -> Result<Tensor> {
+pub(crate) fn per_layer_inputs(cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor) -> Result<Tensor> {
     per_layer_inputs_with_substrate(default_substrate(), cfg, w, tok_ids, ctx_embeds)
 }
 
@@ -87,12 +73,8 @@ pub(crate) fn per_layer_inputs_with_substrate<S: SubstratePort>(
     sub: &S, cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor,
 ) -> Result<Tensor> {
     let (ple, n_layer, t) = (cfg.ple_dim, cfg.n_layer, ctx_embeds.dim(1)?);
-    let tok = w.embed("per_layer_token_embd.weight", tok_ids)?
-        .affine((ple as f32).sqrt() as f64, 0.0)?
-        .reshape((1, t, n_layer, ple))?;
-    let ctx = w.linear(ctx_embeds, "per_layer_model_proj.weight")?
-        .affine((cfg.hidden as f32).sqrt().recip() as f64, 0.0)?
-        .reshape((1, t, n_layer, ple))?;
+    let tok = w.embed("per_layer_token_embd.weight", tok_ids)?.affine((ple as f32).sqrt() as f64, 0.0)?.reshape((1, t, n_layer, ple))?;
+    let ctx = w.linear(ctx_embeds, "per_layer_model_proj.weight")?.affine((cfg.hidden as f32).sqrt().recip() as f64, 0.0)?.reshape((1, t, n_layer, ple))?;
     let ctx = sub.rmsnorm(&ctx, &w.get("per_layer_proj_norm.weight")?, cfg.eps)?;
     Ok(tok.broadcast_add(&ctx)?.affine(std::f64::consts::FRAC_1_SQRT_2, 0.0)?)
 }
@@ -102,21 +84,24 @@ pub fn split_expert_forward<S: SubstratePort>(
     sub: &S, w: &Weights, pre: &str, n: &Tensor, tp: Option<&DualGpuContext>,
 ) -> Result<Tensor> {
     if let Some(tp_ctx) = tp {
-        let (n0, n1) = (n.to_device(&tp_ctx.dev0)?, n.to_device(&tp_ctx.dev1)?);
-        let g0 = w.linear(&n0, &format!("{pre}.ffn_gate.weight"))?;
-        let u0 = w.linear(&n0, &format!("{pre}.ffn_up.weight"))?;
-        let d0 = w.linear(&sub.gelu_tanh(&g0)?.broadcast_mul(&u0)?, &format!("{pre}.ffn_down.weight"))?;
-        let g1 = w.linear(&n1, &format!("{pre}.ffn_gate.weight"))?;
-        let u1 = w.linear(&n1, &format!("{pre}.ffn_up.weight"))?;
-        let d1 = w.linear(&sub.gelu_tanh(&g1)?.broadcast_mul(&u1)?, &format!("{pre}.ffn_down.weight"))?;
-        let red = crate::tp::ring_all_reduce(&[d0, d1])?;
-        let res = if red[0].device().same_device(n.device()) { red[0].clone() } else { red[0].to_device(n.device())? };
-        Ok(res)
-    } else {
-        let g = w.linear(n, &format!("{pre}.ffn_gate.weight"))?;
-        let u = w.linear(n, &format!("{pre}.ffn_up.weight"))?;
-        w.linear(&sub.gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))
+        if let (Ok(gw), Ok(uw), Ok(dw)) = (w.get_raw(&format!("{pre}.ffn_gate.weight")), w.get_raw(&format!("{pre}.ffn_up.weight")), w.get_raw(&format!("{pre}.ffn_down.weight"))) {
+            let (devs, inter) = (tp_ctx.devices(), gw.dim(0)?);
+            if inter % 2 == 0 {
+                let sh = inter / 2;
+                let (gw0, gw1) = (gw.narrow(0, 0, sh)?.to_device(&devs[0])?, gw.narrow(0, sh, sh)?.to_device(&devs[1])?);
+                let (uw0, uw1) = (uw.narrow(0, 0, sh)?.to_device(&devs[0])?, uw.narrow(0, sh, sh)?.to_device(&devs[1])?);
+                let (dw0, dw1) = (dw.narrow(1, 0, sh)?.to_device(&devs[0])?, dw.narrow(1, sh, sh)?.to_device(&devs[1])?);
+                let (n0, n1) = (n.to_device(&devs[0])?, n.to_device(&devs[1])?);
+                let d0 = sub.gelu_tanh(&n0.matmul(&gw0.t()?)?)?.broadcast_mul(&n0.matmul(&uw0.t()?)?)?.matmul(&dw0.t()?)?;
+                let d1 = sub.gelu_tanh(&n1.matmul(&gw1.t()?)?)?.broadcast_mul(&n1.matmul(&uw1.t()?)?)?.matmul(&dw1.t()?)?;
+                let red = crate::tp::ring_all_reduce(&[d0, d1])?;
+                return Ok(if red[0].device().same_device(n.device()) { red[0].clone() } else { red[0].to_device(n.device())? });
+            }
+        }
     }
+    let g = w.linear(n, &format!("{pre}.ffn_gate.weight"))?;
+    let u = w.linear(n, &format!("{pre}.ffn_up.weight"))?;
+    w.linear(&sub.gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -194,11 +179,18 @@ pub fn forward_embeds_with_substrate<S: SubstratePort>(
 pub fn forward_from_embeds(
     cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
 ) -> Result<Tensor> {
-    forward_from_embeds_with_substrate(default_substrate(), cfg, w, cache, embeds, ple, q0)
+    forward_from_embeds_with_tp_and_substrate(default_substrate(), cfg, w, cache, embeds, ple, q0, None)
 }
 
 pub fn forward_from_embeds_with_substrate<S: SubstratePort>(
     sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
+) -> Result<Tensor> {
+    forward_from_embeds_with_tp_and_substrate(sub, cfg, w, cache, embeds, ple, q0, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn forward_from_embeds_with_tp_and_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize, _tp: Option<&DualGpuContext>,
 ) -> Result<Tensor> {
     let mut h = embeds.clone();
     for i in 0..cfg.n_layer {
@@ -212,19 +204,29 @@ pub fn forward_from_embeds_with_substrate<S: SubstratePort>(
     Ok(logits)
 }
 
-/// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
 pub fn forward(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize) -> Result<Tensor> {
-    forward_with_substrate(default_substrate(), cfg, w, cache, ids, q0)
+    forward_with_tp(cfg, w, cache, ids, q0, None)
+}
+
+pub fn forward_with_tp(
+    cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize, tp: Option<&DualGpuContext>,
+) -> Result<Tensor> {
+    forward_with_tp_and_substrate(default_substrate(), cfg, w, cache, ids, q0, tp)
 }
 
 pub fn forward_with_substrate<S: SubstratePort>(
     sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize,
 ) -> Result<Tensor> {
-    let (embeds, ple) = forward_embeds_with_substrate(sub, cfg, w, ids)?;
-    forward_from_embeds_with_substrate(sub, cfg, w, cache, &embeds, &ple, q0)
+    forward_with_tp_and_substrate(sub, cfg, w, cache, ids, q0, None)
 }
 
-/// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
+pub fn forward_with_tp_and_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize, tp: Option<&DualGpuContext>,
+) -> Result<Tensor> {
+    let (embeds, ple) = forward_embeds_with_substrate(sub, cfg, w, ids)?;
+    forward_from_embeds_with_tp_and_substrate(sub, cfg, w, cache, &embeds, &ple, q0, tp)
+}
+
 pub fn forward_last_hidden(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32]) -> Result<Tensor> {
     forward_last_hidden_with_substrate(default_substrate(), cfg, w, cache, prompt_ids)
 }

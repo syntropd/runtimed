@@ -5,11 +5,11 @@
 //! All tensor operations route through `SubstratePort`.
 
 use crate::error::Result;
-use crate::substrate::{CandleSubstrate, SubstratePort, Tensor};
+use crate::substrate::{default_substrate, SubstratePort, Tensor};
 
 /// Greedy decode: the argmax id of a `[vocab]` logit row.
 pub fn greedy(logits: &Tensor) -> Result<u32> {
-    greedy_with_substrate(&CandleSubstrate, logits)
+    greedy_with_substrate(default_substrate(), logits)
 }
 
 /// Greedy decode evaluated through explicit `SubstratePort`.
@@ -20,7 +20,7 @@ pub fn greedy_with_substrate<S: SubstratePort>(sub: &S, logits: &Tensor) -> Resu
 /// Compute normalized probabilities over a `[vocab]` logit row.
 /// When `temperature <= 0.0`, returns a 1-hot probability vector at the greedy argmax.
 pub fn probs(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32) -> Result<Vec<f32>> {
-    probs_with_substrate(&CandleSubstrate, logits, temperature, top_k, top_p)
+    probs_with_substrate(default_substrate(), logits, temperature, top_k, top_p)
 }
 
 /// Compute normalized probabilities through explicit `SubstratePort`.
@@ -120,7 +120,7 @@ pub fn sample_from_probs(p: &[f32], mut rand01: impl FnMut() -> f32) -> u32 {
 /// Temperature + top-k + top-p sampling over a `[vocab]` row.
 /// `temperature <= 0` means greedy. `rand01` supplies uniform draws.
 pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, rand01: impl FnMut() -> f32) -> Result<u32> {
-    sample_with_substrate(&CandleSubstrate, logits, temperature, top_k, top_p, rand01)
+    sample_with_substrate(default_substrate(), logits, temperature, top_k, top_p, rand01)
 }
 
 /// Sample next token through explicit `SubstratePort`.

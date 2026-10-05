@@ -6,7 +6,7 @@
 
 use crate::config::ArchConfig;
 use crate::error::Result;
-use crate::substrate::{CandleSubstrate, Device, SubstratePort, Tensor};
+use crate::substrate::{default_substrate, Device, SubstratePort, Tensor};
 use crate::weights::Weights;
 
 /// Per-layer contiguous chunked O(1) KV cache.
@@ -38,7 +38,7 @@ impl Cache {
     }
 
     pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, dev: &Device) -> Result<(Tensor, Tensor)> {
-        self.append_with_substrate(&CandleSubstrate, layer, k, v, dev)
+        self.append_with_substrate(default_substrate(), layer, k, v, dev)
     }
 
     pub fn append_with_substrate<S: SubstratePort>(
@@ -157,7 +157,7 @@ pub fn forward(
     ids: &[u32],
     q0: usize,
 ) -> Result<Tensor> {
-    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+    forward_with_substrate(default_substrate(), cfg, w, cache, ids, q0)
 }
 
 /// Logits `[1, seq, vocab]` evaluated through explicit `SubstratePort`.
@@ -192,7 +192,7 @@ pub fn forward_last_hidden(
     cache: &mut Cache,
     prompt_ids: &[u32],
 ) -> Result<Tensor> {
-    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+    forward_last_hidden_with_substrate(default_substrate(), cfg, w, cache, prompt_ids)
 }
 
 /// Normalized final hidden state evaluated through explicit `SubstratePort`.

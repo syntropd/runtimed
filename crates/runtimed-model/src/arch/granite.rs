@@ -7,7 +7,7 @@
 
 use crate::config::ArchConfig;
 use crate::error::Result;
-use crate::substrate::{CandleSubstrate, SubstratePort, Tensor};
+use crate::substrate::{default_substrate, SubstratePort, Tensor};
 use crate::weights::Weights;
 
 pub use crate::arch::qwen2::Cache;
@@ -81,7 +81,7 @@ pub fn forward(
     ids: &[u32],
     q0: usize,
 ) -> Result<Tensor> {
-    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+    forward_with_substrate(default_substrate(), cfg, w, cache, ids, q0)
 }
 
 /// Logits `[1, seq, vocab]` evaluated through explicit `SubstratePort`.
@@ -129,7 +129,7 @@ pub fn forward_last_hidden(
     cache: &mut Cache,
     prompt_ids: &[u32],
 ) -> Result<Tensor> {
-    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+    forward_last_hidden_with_substrate(default_substrate(), cfg, w, cache, prompt_ids)
 }
 
 /// Normalized final hidden state evaluated through explicit `SubstratePort`.

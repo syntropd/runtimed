@@ -3,7 +3,7 @@
 
 use crate::config::ArchConfig;
 use crate::error::{ModelError, Result};
-use crate::substrate::{CandleSubstrate, Device, SubstratePort, Tensor};
+use crate::substrate::{default_substrate, Device, SubstratePort, Tensor};
 use crate::weights::Weights;
 
 /// Per-layer contiguous chunked O(1) KV cache. Only layers that own KV
@@ -26,7 +26,7 @@ impl Cache {
     }
 
     pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, dev: &Device) -> Result<(Tensor, Tensor)> {
-        self.append_with_substrate(&CandleSubstrate, layer, k, v, dev)
+        self.append_with_substrate(default_substrate(), layer, k, v, dev)
     }
 
     pub fn append_with_substrate<S: SubstratePort>(&mut self, sub: &S, layer: usize, k: &Tensor, v: &Tensor, _dev: &Device) -> Result<(Tensor, Tensor)> {
@@ -79,7 +79,7 @@ impl Cache {
 pub(crate) fn per_layer_inputs(
     cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor,
 ) -> Result<Tensor> {
-    per_layer_inputs_with_substrate(&CandleSubstrate, cfg, w, tok_ids, ctx_embeds)
+    per_layer_inputs_with_substrate(default_substrate(), cfg, w, tok_ids, ctx_embeds)
 }
 
 pub(crate) fn per_layer_inputs_with_substrate<S: SubstratePort>(
@@ -158,7 +158,7 @@ pub fn input_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<Tensor
 }
 
 pub fn forward_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<(Tensor, Tensor)> {
-    forward_embeds_with_substrate(&CandleSubstrate, cfg, w, ids)
+    forward_embeds_with_substrate(default_substrate(), cfg, w, ids)
 }
 
 pub fn forward_embeds_with_substrate<S: SubstratePort>(
@@ -172,7 +172,7 @@ pub fn forward_embeds_with_substrate<S: SubstratePort>(
 pub fn forward_from_embeds(
     cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
 ) -> Result<Tensor> {
-    forward_from_embeds_with_substrate(&CandleSubstrate, cfg, w, cache, embeds, ple, q0)
+    forward_from_embeds_with_substrate(default_substrate(), cfg, w, cache, embeds, ple, q0)
 }
 
 pub fn forward_from_embeds_with_substrate<S: SubstratePort>(
@@ -192,7 +192,7 @@ pub fn forward_from_embeds_with_substrate<S: SubstratePort>(
 
 /// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
 pub fn forward(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize) -> Result<Tensor> {
-    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+    forward_with_substrate(default_substrate(), cfg, w, cache, ids, q0)
 }
 
 pub fn forward_with_substrate<S: SubstratePort>(
@@ -204,7 +204,7 @@ pub fn forward_with_substrate<S: SubstratePort>(
 
 /// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
 pub fn forward_last_hidden(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32]) -> Result<Tensor> {
-    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+    forward_last_hidden_with_substrate(default_substrate(), cfg, w, cache, prompt_ids)
 }
 
 pub fn forward_last_hidden_with_substrate<S: SubstratePort>(

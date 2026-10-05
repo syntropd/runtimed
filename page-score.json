@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "75ad847",
- "dirty": false,
+ "rev": "0e89719",
+ "dirty": true,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -922,7 +922,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/gemma4.rs",
-   "lines": 247,
+   "lines": 249,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

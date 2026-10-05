@@ -31,6 +31,8 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
         Arch::Granite
     } else if model_type.starts_with("phi") || arch_name.contains("Phi") {
         Arch::Phi3
+    } else if model_type.contains("bitnet") || arch_name.contains("Bitnet") || arch_name.contains("BitNet") {
+        Arch::BitNet
     } else {
         return Err(ModelError::Arch(format!(
             "unknown or unsupported HF architecture: model_type={model_type}, arch={arch_name}"
@@ -85,8 +87,12 @@ pub fn parse_hf_config(json_str: &str) -> Result<ArchConfig> {
     let mut layers = Vec::with_capacity(n_layer);
 
     match arch {
-        Arch::Qwen2 | Arch::Granite | Arch::Phi3 => {
-            act = Activation::Silu;
+        Arch::Qwen2 | Arch::Granite | Arch::Phi3 | Arch::BitNet => {
+            act = if arch == Arch::BitNet {
+                Activation::Relu2
+            } else {
+                Activation::Silu
+            };
             embed_scale = 1.0;
             final_softcap = None;
             attn_scale = None;

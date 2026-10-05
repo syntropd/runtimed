@@ -184,6 +184,7 @@ pub fn generate_tokens(
     }
 
     let mut session = entry.session.lock().map_err(|_| RuntimedError::GenerationFailed("session lock poisoned".into()))?;
+    let _tp_context = resolve_device_context(&entry.meta);
     let seed = if request.seed == 0 { entropy_seed() } else { request.seed };
     let mut rng = Rng(seed);
     let is_thinking = is_thinking_model(&entry.tokenizer);
@@ -193,15 +194,8 @@ pub fn generate_tokens(
         (is_thinking, effort.to_budget(entry.meta.context_window))
     } else {
         let avail_mem = crate::governor::read_system_available_memory();
-        let psi_some = crate::psi::read_memory_psi(std::path::Path::new(crate::psi::DEFAULT_PSI_MEMORY_PATH))
-            .map(|(s, _)| s)
-            .unwrap_or(0.0);
-        let gov = crate::governor::MultiGpuHeadroomGovernor::for_single_device(
-            &entry.meta.compute_backend,
-            entry.meta.memory_bytes,
-            avail_mem,
-            psi_some,
-        );
+        let psi_some = crate::psi::read_memory_psi(std::path::Path::new(crate::psi::DEFAULT_PSI_MEMORY_PATH)).map(|(s, _)| s).unwrap_or(0.0);
+        let gov = crate::governor::MultiGpuHeadroomGovernor::for_single_device(&entry.meta.compute_backend, entry.meta.memory_bytes, avail_mem, psi_some);
         let effort = gov.resolve_effort(is_thinking);
         (is_thinking, effort.to_budget(entry.meta.context_window))
     };
@@ -238,6 +232,15 @@ pub(super) fn finish(
     };
     tracing::info!(model = %entry.meta.name, prompt = prompt_tokens, completion = ids.len(), ms = result.duration_ms, "generate");
     result
+}
+
+/// Auto-selects TP=2 execution context when model parameters >= 8B and >= 2 CUDA devices are detected.
+pub fn resolve_device_context(meta: &crate::model::meta::LoadedModel) -> Option<runtimed_model::tp::DualGpuContext> {
+    if meta.parameter_count >= 8_000_000_000 {
+        runtimed_model::tp::DualGpuContext::try_cuda()
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

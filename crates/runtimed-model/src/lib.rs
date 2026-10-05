@@ -15,6 +15,7 @@ pub mod ops;
 pub mod pipeline;
 pub mod sampler;
 pub mod substrate;
+pub mod ternary;
 pub mod tokenizer;
 pub mod tp;
 pub mod vision;
@@ -23,6 +24,7 @@ pub mod weights;
 
 pub use substrate::{CandleSubstrate, SubstratePort};
 pub use audio::{AcousticNet, BufferSink, KokoroConfig, KokoroEngine, PcmSink, PwCatSink};
+pub use ternary::{BitLinear, TernaryWeight};
 pub use visual_gen::{
     create_sealed_memfd, TurboUnet, VisualComputeLease, VisualGenConfig, VisualGenSampler,
 };

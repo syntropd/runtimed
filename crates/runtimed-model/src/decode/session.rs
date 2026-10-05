@@ -6,7 +6,7 @@
 use crate::config::{Arch, ArchConfig};
 use crate::error::{ModelError, Result};
 use crate::weights::Weights;
-use crate::arch::{gemma4, granite, phi3, qwen2};
+use crate::arch::{bitnet, gemma4, granite, phi3, qwen2};
 use candle_core::Tensor;
 use std::sync::Arc;
 
@@ -15,6 +15,7 @@ enum Kind {
     Gemma4(gemma4::Cache),
     Granite(qwen2::Cache),
     Phi3(qwen2::Cache),
+    BitNet(qwen2::Cache),
 }
 
 pub struct Session {
@@ -26,10 +27,11 @@ pub struct Session {
 impl Session {
     pub fn new(cfg: Arc<ArchConfig>, w: Arc<Weights>) -> Result<Self> {
         let kind = match cfg.arch {
-            Arch::Qwen2 => Kind::Qwen2(qwen2::Cache::new(cfg.n_layer)),
             Arch::Gemma4 => Kind::Gemma4(gemma4::Cache::new(cfg.n_layer)),
+            Arch::Qwen2 => Kind::Qwen2(qwen2::Cache::new(cfg.n_layer)),
             Arch::Granite => Kind::Granite(qwen2::Cache::new(cfg.n_layer)),
             Arch::Phi3 => Kind::Phi3(qwen2::Cache::new(cfg.n_layer)),
+            Arch::BitNet => Kind::BitNet(qwen2::Cache::new(cfg.n_layer)),
         };
         Ok(Self { cfg, w, kind })
     }
@@ -101,7 +103,7 @@ impl Session {
     pub fn reset(&mut self) {
         let _ = Weights::ensure_current(self.device());
         match &mut self.kind {
-            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.reset(),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) | Kind::BitNet(c) => c.reset(),
             Kind::Gemma4(c) => c.reset(),
         }
     }
@@ -110,7 +112,7 @@ impl Session {
     pub fn truncate(&mut self, target_len: usize) {
         let _ = Weights::ensure_current(self.device());
         match &mut self.kind {
-            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.truncate(target_len),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) | Kind::BitNet(c) => c.truncate(target_len),
             Kind::Gemma4(c) => c.truncate(target_len),
         }
     }
@@ -119,7 +121,7 @@ impl Session {
     pub fn spill_layers(&mut self, count: usize) -> Result<usize> {
         Weights::ensure_current(self.device())?;
         match &mut self.kind {
-            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.spill_layers(count),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) | Kind::BitNet(c) => c.spill_layers(count),
             Kind::Gemma4(c) => c.spill_layers(count),
         }
     }
@@ -129,7 +131,7 @@ impl Session {
         Weights::ensure_current(self.device())?;
         let dev = self.device().clone();
         match &mut self.kind {
-            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) => c.prefetch_layers(&dev, count),
+            Kind::Qwen2(c) | Kind::Granite(c) | Kind::Phi3(c) | Kind::BitNet(c) => c.prefetch_layers(&dev, count),
             Kind::Gemma4(c) => c.prefetch_layers(&dev, count),
         }
     }
@@ -159,6 +161,7 @@ impl Session {
             Kind::Gemma4(c) => gemma4::forward(&self.cfg, &self.w, c, ids, q0),
             Kind::Granite(c) => granite::forward(&self.cfg, &self.w, c, ids, q0),
             Kind::Phi3(c) => phi3::forward(&self.cfg, &self.w, c, ids, q0),
+            Kind::BitNet(c) => bitnet::forward(&self.cfg, &self.w, c, ids, q0),
         }
     }
 
@@ -183,12 +186,9 @@ impl Session {
             Kind::Gemma4(c) => gemma4::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
             Kind::Granite(c) => granite::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
             Kind::Phi3(c) => phi3::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
+            Kind::BitNet(c) => bitnet::forward_last_hidden(&self.cfg, &self.w, c, prompt_ids)?,
         };
-        let key = if self.w.contains_key("output.weight") {
-            "output.weight"
-        } else {
-            "token_embd.weight"
-        };
+        let key = if self.w.contains_key("output.weight") { "output.weight" } else { "token_embd.weight" };
         let w_c = self.w.candidate_weights(key, candidate_ids)?;
         let out_dev = w_c.device();
         Weights::ensure_current(out_dev)?;

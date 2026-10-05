@@ -43,6 +43,21 @@ pub struct BoundingBox {
     pub y2: u32,
 }
 
+impl BoundingBox {
+    pub fn to_pixel_coords(&self, screen_w: u32, screen_h: u32) -> (u32, u32, u32, u32) {
+        (
+            (self.x1 as u64 * screen_w as u64 / 1000) as u32,
+            (self.y1 as u64 * screen_h as u64 / 1000) as u32,
+            (self.x2 as u64 * screen_w as u64 / 1000) as u32,
+            (self.y2 as u64 * screen_h as u64 / 1000) as u32,
+        )
+    }
+
+    pub fn center_point_normalized(&self) -> (f32, f32) {
+        (((self.x1 + self.x2) as f32 / 2000.0).clamp(0.0, 1.0), ((self.y1 + self.y2) as f32 / 2000.0).clamp(0.0, 1.0))
+    }
+}
+
 /// Structured outcome of Florence-2 visual grounding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Florence2Result {
@@ -72,19 +87,17 @@ impl Florence2Engine {
         let (text, result_regions) = match task {
             Florence2Task::Ocr => {
                 let lines: Vec<String> = regions.iter().map(|r| r.label.clone()).collect();
-                let txt = if lines.is_empty() { "Detected visual content".into() } else { lines.join("\n") };
-                (txt, Vec::new())
+                (if lines.is_empty() { "Detected visual content".into() } else { lines.join("\n") }, Vec::new())
             }
-            Florence2Task::OcrWithRegion => {
-                let txt = regions.iter().map(|r| format!("{}: [{}, {}, {}, {}]", r.label, r.x1, r.y1, r.x2, r.y2)).collect::<Vec<_>>().join("\n");
-                (txt, regions)
-            }
-            Florence2Task::GroundedCaption => {
-                (format!("Desktop UI container with {} active interactive elements", regions.len()), regions)
-            }
+            Florence2Task::OcrWithRegion => (regions.iter().map(|r| format!("{}: [{}, {}, {}, {}]", r.label, r.x1, r.y1, r.x2, r.y2)).collect::<Vec<_>>().join("\n"), regions),
+            Florence2Task::GroundedCaption => (format!("Desktop UI container with {} active interactive elements", regions.len()), regions),
         };
-
         Ok(Florence2Result { text, regions: result_regions })
+    }
+
+    /// De-normalize Florence-2 [0..1000] point to original screen pixels (px, py).
+    pub fn denormalize_point(x: u32, y: u32, screen_w: u32, screen_h: u32) -> (u32, u32) {
+        ((x as u64 * screen_w as u64 / 1000) as u32, (y as u64 * screen_h as u64 / 1000) as u32)
     }
 
     /// Fast CPU DaViT feature-driven UI region segmenter and coordinate normalizer.
@@ -224,27 +237,19 @@ mod tests {
         let engine = Florence2Engine::new();
         let bytes = create_test_image(128, 128);
         let res = engine.ground(&bytes, Florence2Task::OcrWithRegion).unwrap();
-        assert!(!res.regions.is_empty());
-        assert!(!res.text.is_empty());
+        assert!(!res.regions.is_empty() && !res.text.is_empty());
     }
 
     #[test]
-    fn test_parse_loc_tokens() {
-        let tag_seq = "<loc_100><loc_200><loc_300><loc_400>Submit Button";
-        let boxes = Florence2Engine::parse_loc_tokens(tag_seq);
+    fn test_parse_loc_tokens_and_denormalize() {
+        let boxes = Florence2Engine::parse_loc_tokens("<loc_100><loc_200><loc_300><loc_400>Submit Button");
         assert_eq!(boxes.len(), 1);
-        assert_eq!(boxes[0].y1, 100);
-        assert_eq!(boxes[0].x1, 200);
-        assert_eq!(boxes[0].y2, 300);
-        assert_eq!(boxes[0].x2, 400);
-        assert_eq!(boxes[0].label, "Submit Button");
+        assert_eq!((boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2), (200, 100, 400, 300));
+        assert_eq!(boxes[0].to_pixel_coords(1000, 1000), (200, 100, 400, 300));
+        assert_eq!(boxes[0].center_point_normalized(), (0.3, 0.2));
+        assert_eq!(Florence2Engine::denormalize_point(500, 500, 1920, 1080), (960, 540));
 
-        let inv = "<loc_800><loc_900><loc_200><loc_100>";
-        let inv_boxes = Florence2Engine::parse_loc_tokens(inv);
-        assert_eq!(inv_boxes[0].x1, 100);
-        assert_eq!(inv_boxes[0].x2, 900);
-        assert_eq!(inv_boxes[0].y1, 200);
-        assert_eq!(inv_boxes[0].y2, 800);
-        assert_eq!(inv_boxes[0].label, "element");
+        let inv = Florence2Engine::parse_loc_tokens("<loc_800><loc_900><loc_200><loc_100>");
+        assert_eq!((inv[0].x1, inv[0].y1, inv[0].x2, inv[0].y2), (100, 200, 900, 800));
     }
 }

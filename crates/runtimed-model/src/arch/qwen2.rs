@@ -7,6 +7,7 @@
 use crate::config::ArchConfig;
 use crate::error::Result;
 use crate::substrate::{default_substrate, Device, SubstratePort, Tensor};
+use crate::tp::DualGpuContext;
 use crate::weights::Weights;
 
 /// Per-layer contiguous chunked O(1) KV cache.
@@ -149,79 +150,84 @@ fn layer<S: SubstratePort>(
     Ok(h.broadcast_add(&mlp)?)
 }
 
-/// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
-pub fn forward(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    ids: &[u32],
-    q0: usize,
+/// Single layer step execution with optional TP=2 dual-GPU acceleration.
+#[allow(clippy::too_many_arguments)]
+pub fn forward_step<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, i: usize, h: &Tensor, q0: usize, tp: Option<&DualGpuContext>,
 ) -> Result<Tensor> {
+    if let Some(tp_ctx) = tp {
+        forward_step_tp(sub, cfg, w, cache, i, h, q0, tp_ctx)
+    } else {
+        layer(sub, cfg, w, cache, i, h, q0)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn forward_step_tp<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, i: usize, h: &Tensor, q0: usize, tp: &DualGpuContext,
+) -> Result<Tensor> {
+    let (pre, devs, lc) = (format!("blk.{i}"), tp.devices(), &cfg.layers[i]);
+    if let (Ok(qw), Ok(kw), Ok(vw), Ok(ow), Ok(gw), Ok(uw), Ok(dw)) = (
+        w.get_raw(&format!("{pre}.attn_q.weight")),
+        w.get_raw(&format!("{pre}.attn_k.weight")),
+        w.get_raw(&format!("{pre}.attn_v.weight")),
+        w.get_raw(&format!("{pre}.attn_output.weight")),
+        w.get_raw(&format!("{pre}.ffn_gate.weight")),
+        w.get_raw(&format!("{pre}.ffn_up.weight")),
+        w.get_raw(&format!("{pre}.ffn_down.weight")),
+    ) {
+        if let Ok(blk) = crate::tp::DualGpuBlock::from_full_weights(
+            qw, kw, vw, ow, lc.n_head, lc.n_kv, gw, uw, dw, &devs,
+        ) {
+            let n = sub.rmsnorm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
+            let [out0, _] = blk.forward(&n.to_device(&devs[0])?, &n.to_device(&devs[1])?, None, None)?;
+            let res = if out0.device().same_device(h.device()) { out0 } else { out0.to_device(h.device())? };
+            return Ok(h.broadcast_add(&res)?);
+        }
+    }
+    layer(sub, cfg, w, cache, i, h, q0)
+}
+
+/// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
+pub fn forward(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize) -> Result<Tensor> {
     forward_with_substrate(default_substrate(), cfg, w, cache, ids, q0)
 }
 
 /// Logits `[1, seq, vocab]` evaluated through explicit `SubstratePort`.
 pub fn forward_with_substrate<S: SubstratePort>(
-    sub: &S,
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    ids: &[u32],
-    q0: usize,
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize,
 ) -> Result<Tensor> {
     let mut h = w.embed("token_embd.weight", ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(sub, cfg, w, cache, i, &h, q0)?;
+        h = forward_step(sub, cfg, w, cache, i, &h, q0, None)?;
     }
     let norm_w = w.get_raw("output_norm.weight")?;
-    let out_dev = norm_w.device();
-    Weights::ensure_current(out_dev)?;
-    let h = if !h.device().same_device(out_dev) {
-        h.to_device(out_dev)?
-    } else {
-        h
-    };
+    Weights::ensure_current(norm_w.device())?;
+    let h = if !h.device().same_device(norm_w.device()) { h.to_device(norm_w.device())? } else { h };
     let h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     w.linear(&h, "output.weight")
 }
 
 /// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
-pub fn forward_last_hidden(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    prompt_ids: &[u32],
-) -> Result<Tensor> {
+pub fn forward_last_hidden(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32]) -> Result<Tensor> {
     forward_last_hidden_with_substrate(default_substrate(), cfg, w, cache, prompt_ids)
 }
 
 /// Normalized final hidden state evaluated through explicit `SubstratePort`.
 pub fn forward_last_hidden_with_substrate<S: SubstratePort>(
-    sub: &S,
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    prompt_ids: &[u32],
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32],
 ) -> Result<Tensor> {
     if prompt_ids.is_empty() {
-        return Err(crate::error::ModelError::Config(
-            "cannot score an empty prompt".into(),
-        ));
+        return Err(crate::error::ModelError::Config("cannot score an empty prompt".into()));
     }
     let mut h = w.embed("token_embd.weight", prompt_ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(sub, cfg, w, cache, i, &h, 0)?;
+        h = forward_step(sub, cfg, w, cache, i, &h, 0, None)?;
     }
     let norm_w = w.get_raw("output_norm.weight")?;
-    let out_dev = norm_w.device();
-    Weights::ensure_current(out_dev)?;
-    let h = if !h.device().same_device(out_dev) {
-        h.to_device(out_dev)?
-    } else {
-        h
-    };
+    Weights::ensure_current(norm_w.device())?;
+    let h = if !h.device().same_device(norm_w.device()) { h.to_device(norm_w.device())? } else { h };
     let h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let seq = h.dim(1)?;
-    let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
-    Ok(last)
+    Ok(h.narrow(1, seq - 1, 1)?.squeeze(1)?)
 }

@@ -6,6 +6,7 @@ pub enum Arch {
     Gemma4,
     Granite,
     Phi3,
+    BitNet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +15,8 @@ pub enum Activation {
     Silu,
     /// Gemma4 GeGLU: `gelu_tanh(gate) * up`.
     GeluTanh,
+    /// BitNet b1.58 squared ReLU: `relu(gate)^2 * up`.
+    Relu2,
 }
 
 /// Everything the forward pass needs for one layer.

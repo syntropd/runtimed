@@ -6,7 +6,7 @@ pub mod ring_reduce;
 pub mod row_linear;
 
 pub use column_linear::ColumnParallelLinear;
-pub use dual_gpu::{DualGpuAttention, DualGpuContext, DualGpuMlp};
+pub use dual_gpu::{DualGpuAttention, DualGpuBlock, DualGpuContext, DualGpuMlp};
 pub use ring_reduce::{ring_all_reduce, RingReducer};
 pub use row_linear::RowParallelLinear;
 

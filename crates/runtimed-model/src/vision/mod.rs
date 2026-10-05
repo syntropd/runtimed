@@ -4,6 +4,7 @@
 //! axial RoPE, clippable linears) emits pooled soft tokens projected to
 //! text width. Preprocessing lives in [`crate::vision::vpre`].
 
+pub mod dynamic_patch;
 pub mod ephemeral;
 pub mod florence2;
 pub mod pool_patches;
@@ -11,6 +12,9 @@ pub mod temporal_window;
 pub mod vpre;
 pub mod vresize;
 
+pub use crate::vision::dynamic_patch::{
+    compute_dynamic_grid, interpolate_pos_embed_2d, sinusoidal_pos_embed_2d,
+};
 pub use crate::vision::florence2::{BoundingBox, Florence2Engine, Florence2Result, Florence2Task};
 pub use crate::vision::pool_patches::pool_patches;
 pub use crate::vision::temporal_window::{

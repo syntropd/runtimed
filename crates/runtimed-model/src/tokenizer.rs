@@ -84,7 +84,7 @@ impl EngineTokenizer {
                 let add_special = bpe.wants_bos();
                 Ok((Self::Bpe(bpe), eos, add_special))
             }
-            Arch::Granite | Arch::Phi3 => {
+            Arch::Granite | Arch::Phi3 | Arch::BitNet => {
                 let tok_path = resolve_tok_path(weights);
                 if tok_path.exists() {
                     let tok = Tokenizer::from_file(&tok_path).map_err(|e| {
@@ -172,6 +172,7 @@ impl EngineTokenizer {
             Arch::Qwen2 => (vec![151643, 151645], false),
             Arch::Granite => (vec![0], false),
             Arch::Phi3 => (vec![32000, 32007], false),
+            Arch::BitNet => (vec![2], false),
         };
 
         Ok((Self::File(tok), eos, add_special))

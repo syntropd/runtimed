@@ -23,6 +23,7 @@ pub fn load_safetensors_entry(
         runtimed_model::Arch::Gemma4 => "gemma4",
         runtimed_model::Arch::Granite => "granite",
         runtimed_model::Arch::Phi3 => "phi3",
+        runtimed_model::Arch::BitNet => "bitnet",
     };
     let cfg_arc = Arc::new(cfg);
 

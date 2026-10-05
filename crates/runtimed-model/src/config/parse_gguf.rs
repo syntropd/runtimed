@@ -56,6 +56,7 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
         "gemma4" => Arch::Gemma4,
         "granite" => Arch::Granite,
         "phi3" => Arch::Phi3,
+        "bitnet" | "bitnet-b1.58" => Arch::BitNet,
         other => return Err(ModelError::Arch(other.to_string())),
     };
     let p = arch_tag; // metadata key prefix matches the arch tag
@@ -127,8 +128,12 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
                 });
             }
         }
-        Arch::Phi3 => {
-            act = Activation::Silu;
+        Arch::Phi3 | Arch::BitNet => {
+            act = if arch == Arch::BitNet {
+                Activation::Relu2
+            } else {
+                Activation::Silu
+            };
             embed_scale = 1.0;
             final_softcap = None;
             let head_dim = hidden / n_head;
@@ -136,8 +141,8 @@ pub fn parse_gguf_config(file: &GgufFile) -> Result<ArchConfig> {
             sliding_window = None;
             rope_factors = None;
             ple_dim = 0;
-            let ffn = meta_u32(file, "phi3.feed_forward_length")? as usize;
-            let rope_dim = meta_u32(file, "phi3.rope.dimension_count")
+            let ffn = meta_u32(file, &format!("{p}.feed_forward_length"))? as usize;
+            let rope_dim = meta_u32(file, &format!("{p}.rope.dimension_count"))
                 .map(|v| v as usize)
                 .unwrap_or(head_dim);
             for _ in 0..n_layer {

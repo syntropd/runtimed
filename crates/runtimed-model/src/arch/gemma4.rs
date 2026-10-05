@@ -4,6 +4,7 @@
 use crate::config::ArchConfig;
 use crate::error::{ModelError, Result};
 use crate::substrate::{default_substrate, Device, SubstratePort, Tensor};
+use crate::tp::DualGpuContext;
 use crate::weights::Weights;
 
 /// Per-layer contiguous chunked O(1) KV cache. Only layers that own KV
@@ -96,6 +97,28 @@ pub(crate) fn per_layer_inputs_with_substrate<S: SubstratePort>(
     Ok(tok.broadcast_add(&ctx)?.affine(std::f64::consts::FRAC_1_SQRT_2, 0.0)?)
 }
 
+/// Split expert projection routing active experts across both GPUs when TP=2 is engaged.
+pub fn split_expert_forward<S: SubstratePort>(
+    sub: &S, w: &Weights, pre: &str, n: &Tensor, tp: Option<&DualGpuContext>,
+) -> Result<Tensor> {
+    if let Some(tp_ctx) = tp {
+        let (n0, n1) = (n.to_device(&tp_ctx.dev0)?, n.to_device(&tp_ctx.dev1)?);
+        let g0 = w.linear(&n0, &format!("{pre}.ffn_gate.weight"))?;
+        let u0 = w.linear(&n0, &format!("{pre}.ffn_up.weight"))?;
+        let d0 = w.linear(&sub.gelu_tanh(&g0)?.broadcast_mul(&u0)?, &format!("{pre}.ffn_down.weight"))?;
+        let g1 = w.linear(&n1, &format!("{pre}.ffn_gate.weight"))?;
+        let u1 = w.linear(&n1, &format!("{pre}.ffn_up.weight"))?;
+        let d1 = w.linear(&sub.gelu_tanh(&g1)?.broadcast_mul(&u1)?, &format!("{pre}.ffn_down.weight"))?;
+        let red = crate::tp::ring_all_reduce(&[d0, d1])?;
+        let res = if red[0].device().same_device(n.device()) { red[0].clone() } else { red[0].to_device(n.device())? };
+        Ok(res)
+    } else {
+        let g = w.linear(n, &format!("{pre}.ffn_gate.weight"))?;
+        let u = w.linear(n, &format!("{pre}.ffn_up.weight"))?;
+        w.linear(&sub.gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn layer<S: SubstratePort>(
     sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, i: usize, h: &Tensor, ple: &Tensor, q0: usize,
@@ -135,11 +158,10 @@ fn layer<S: SubstratePort>(
     let o = sub.rmsnorm(&o, &w.get(&format!("{pre}.post_attention_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&o)?;
 
-    // GeGLU block with post norm.
+    // GeGLU block with post norm (with split expert projection for MoE / TP=2).
     let n = sub.rmsnorm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
-    let g = w.linear(&n, &format!("{pre}.ffn_gate.weight"))?;
-    let u = w.linear(&n, &format!("{pre}.ffn_up.weight"))?;
-    let mlp = w.linear(&sub.gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))?;
+    let tp_opt = crate::tp::DualGpuContext::try_cuda();
+    let mlp = split_expert_forward(sub, w, &pre, &n, tp_opt.as_ref())?;
     let mlp = sub.rmsnorm(&mlp, &w.get(&format!("{pre}.post_ffw_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&mlp)?;
 

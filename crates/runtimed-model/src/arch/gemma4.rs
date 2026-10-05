@@ -1,12 +1,11 @@
 //! Gemma4 decoder with proportional RoPE and per-layer embedding injection.
+//! All tensor math operates behind the sovereign `SubstratePort` boundary.
 
 use crate::config::ArchConfig;
 use crate::error::{ModelError, Result};
-use crate::ops;
+use crate::substrate::{CandleSubstrate, Device, SubstratePort, Tensor};
 use crate::weights::Weights;
-use candle_core::Tensor;
 
-/// Per-layer `(k, v)` caches. Only layers that own KV ever fill a slot;
 /// Per-layer contiguous chunked O(1) KV cache. Only layers that own KV
 /// store entries; shared layers read their source layer's slot instead.
 pub struct Cache {
@@ -26,12 +25,16 @@ impl Cache {
         for slot in self.entries.iter_mut().flatten() { slot.truncate(target_len); }
     }
 
-    pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, _dev: &candle_core::Device) -> Result<(Tensor, Tensor)> {
+    pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, dev: &Device) -> Result<(Tensor, Tensor)> {
+        self.append_with_substrate(&CandleSubstrate, layer, k, v, dev)
+    }
+
+    pub fn append_with_substrate<S: SubstratePort>(&mut self, sub: &S, layer: usize, k: &Tensor, v: &Tensor, _dev: &Device) -> Result<(Tensor, Tensor)> {
         if layer >= self.entries.len() { return Err(ModelError::Config(format!("layer {layer} out of bounds"))); }
         match &mut self.entries[layer] {
             Some(kv) => kv.append(k, v),
             None => {
-                let kv = crate::cache::LayerKv::new(k, v, 256)?;
+                let kv = sub.alloc_kv(k, v, 256)?;
                 let res = kv.current()?;
                 self.entries[layer] = Some(kv);
                 Ok(res)
@@ -45,7 +48,7 @@ impl Cache {
             .current()
     }
 
-    pub fn splice_kv(&mut self, kv: &[Option<(Tensor, Tensor)>], dev: &candle_core::Device) -> Result<()> {
+    pub fn splice_kv(&mut self, kv: &[Option<(Tensor, Tensor)>], dev: &Device) -> Result<()> {
         for (i, (k, v)) in kv.iter().enumerate().filter_map(|(i, o)| o.as_ref().map(|p| (i, p))) {
             if i >= self.entries.len() { break; }
             let (kd, vd) = (k.to_device(dev)?, v.to_device(dev)?);
@@ -63,7 +66,7 @@ impl Cache {
         Ok(n)
     }
 
-    pub fn prefetch_layers(&mut self, dev: &candle_core::Device, max_layers: usize) -> Result<usize> {
+    pub fn prefetch_layers(&mut self, dev: &Device, max_layers: usize) -> Result<usize> {
         let mut n = 0;
         for kv in self.entries.iter_mut().flatten() {
             if n >= max_layers { break; }
@@ -73,63 +76,47 @@ impl Cache {
     }
 }
 
-/// Per-layer inputs `[1, seq, n_layer, ple]`: token identity plus projection.
 pub(crate) fn per_layer_inputs(
-    cfg: &ArchConfig,
-    w: &Weights,
-    tok_ids: &[u32],
-    ctx_embeds: &Tensor,
+    cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor,
 ) -> Result<Tensor> {
-    let ple = cfg.ple_dim;
-    let n_layer = cfg.n_layer;
-    let t = ctx_embeds.dim(1)?;
-    // Token identity, scaled by sqrt(ple).
-    let tok = w.embed("per_layer_token_embd.weight", tok_ids)?;
-    let tok = tok
-        .affine((ple as f32).sqrt() as f64, 0.0)?
-        .reshape((1, t, n_layer, ple))?;
-    // Context projection, scaled by 1/sqrt(hidden), then normalized.
-    let ctx = w.linear(ctx_embeds, "per_layer_model_proj.weight")?;
-    let ctx = ctx
-        .affine((cfg.hidden as f32).sqrt().recip() as f64, 0.0)?
-        .reshape((1, t, n_layer, ple))?;
-    let ctx = ops::rms_norm(&ctx, &w.get("per_layer_proj_norm.weight")?, cfg.eps)?;
-    Ok(tok
-        .broadcast_add(&ctx)?
-        .affine(std::f64::consts::FRAC_1_SQRT_2, 0.0)?)
+    per_layer_inputs_with_substrate(&CandleSubstrate, cfg, w, tok_ids, ctx_embeds)
 }
 
-fn layer(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    i: usize,
-    h: &Tensor,
-    ple: &Tensor,
-    q0: usize,
+pub(crate) fn per_layer_inputs_with_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, tok_ids: &[u32], ctx_embeds: &Tensor,
 ) -> Result<Tensor> {
-    let lc = &cfg.layers[i];
-    let pre = format!("blk.{i}");
-    let dev = w.device();
-    let t = h.dim(1)?;
+    let (ple, n_layer, t) = (cfg.ple_dim, cfg.n_layer, ctx_embeds.dim(1)?);
+    let tok = w.embed("per_layer_token_embd.weight", tok_ids)?
+        .affine((ple as f32).sqrt() as f64, 0.0)?
+        .reshape((1, t, n_layer, ple))?;
+    let ctx = w.linear(ctx_embeds, "per_layer_model_proj.weight")?
+        .affine((cfg.hidden as f32).sqrt().recip() as f64, 0.0)?
+        .reshape((1, t, n_layer, ple))?;
+    let ctx = sub.rmsnorm(&ctx, &w.get("per_layer_proj_norm.weight")?, cfg.eps)?;
+    Ok(tok.broadcast_add(&ctx)?.affine(std::f64::consts::FRAC_1_SQRT_2, 0.0)?)
+}
 
-    // Attention block with post norm.
-    let n = ops::rms_norm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
+#[allow(clippy::too_many_arguments)]
+fn layer<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, i: usize, h: &Tensor, ple: &Tensor, q0: usize,
+) -> Result<Tensor> {
+    let (lc, pre, dev, t) = (&cfg.layers[i], format!("blk.{i}"), w.device(), h.dim(1)?);
+    let n = sub.rmsnorm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
     let split = |y: Tensor| -> Result<Tensor> {
         let heads = y.dim(2)? / lc.head_dim;
         Ok(y.reshape((1, t, heads, lc.head_dim))?.transpose(1, 2)?)
     };
     let factors = (!lc.is_swa).then_some(cfg.rope_factors.as_deref()).flatten();
     let q = w.linear(&n, &format!("{pre}.attn_q.weight"))?;
-    let q = ops::rms_norm(&split(q)?, &w.get(&format!("{pre}.attn_q_norm.weight"))?, cfg.eps)?;
-    let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, factors)?;
+    let q = sub.rmsnorm(&split(q)?, &w.get(&format!("{pre}.attn_q_norm.weight"))?, cfg.eps)?;
+    let q = sub.rope(&q, q0, lc.rope_theta, lc.rope_dim, factors)?;
     let (k_full, v_full) = if lc.has_kv {
         let k = w.linear(&n, &format!("{pre}.attn_k.weight"))?;
-        let k = ops::rms_norm(&split(k)?, &w.get(&format!("{pre}.attn_k_norm.weight"))?, cfg.eps)?;
-        let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, factors)?;
+        let k = sub.rmsnorm(&split(k)?, &w.get(&format!("{pre}.attn_k_norm.weight"))?, cfg.eps)?;
+        let k = sub.rope(&k, q0, lc.rope_theta, lc.rope_dim, factors)?;
         let v = w.linear(&n, &format!("{pre}.attn_v.weight"))?;
-        let v = ops::rms_norm_plain(&split(v)?, cfg.eps)?;
-        cache.append(i, &k, &v, dev)?
+        let v = sub.rmsnorm_plain(&split(v)?, cfg.eps)?;
+        cache.append_with_substrate(sub, i, &k, &v, dev)?
     } else {
         let (sk, sv) = cache.get_layer(lc.kv_source)?;
         let sk = if sk.device().same_device(dev) { sk } else { sk.to_device(dev)? };
@@ -138,34 +125,30 @@ fn layer(
     };
     let total = k_full.dim(2)?;
     let window = lc.is_swa.then_some(cfg.sliding_window).flatten();
-    let mask = if t == 1 && window.is_none_or(|w| total <= w) {
-        None
-    } else {
-        Some(ops::causal_mask(t, total, q0, window, dev)?)
+    let mask = if t == 1 && window.is_none_or(|w| total <= w) { None } else {
+        Some(sub.causal_mask(t, total, q0, window, dev)?)
     };
     let scale = cfg.attn_scale.unwrap_or_else(|| (lc.head_dim as f32).sqrt().recip());
-    let o = ops::attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
+    let o = sub.attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
-    let o = ops::rms_norm(&o, &w.get(&format!("{pre}.post_attention_norm.weight"))?, cfg.eps)?;
+    let o = sub.rmsnorm(&o, &w.get(&format!("{pre}.post_attention_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&o)?;
 
     // GeGLU block with post norm.
-    let n = ops::rms_norm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
+    let n = sub.rmsnorm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
     let g = w.linear(&n, &format!("{pre}.ffn_gate.weight"))?;
     let u = w.linear(&n, &format!("{pre}.ffn_up.weight"))?;
-    let mlp = w.linear(&ops::gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))?;
-    let mlp = ops::rms_norm(&mlp, &w.get(&format!("{pre}.post_ffw_norm.weight"))?, cfg.eps)?;
+    let mlp = w.linear(&sub.gelu_tanh(&g)?.broadcast_mul(&u)?, &format!("{pre}.ffn_down.weight"))?;
+    let mlp = sub.rmsnorm(&mlp, &w.get(&format!("{pre}.post_ffw_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&mlp)?;
 
     // Per-layer embedding injection.
-    let gate = ops::gelu_tanh(&w.linear(&h, &format!("{pre}.inp_gate.weight"))?)?;
+    let gate = sub.gelu_tanh(&w.linear(&h, &format!("{pre}.inp_gate.weight"))?)?;
     let pli = ple.narrow(2, i, 1)?.squeeze(2)?;
     let inj = w.linear(&gate.broadcast_mul(&pli)?, &format!("{pre}.proj.weight"))?;
-    let inj = ops::rms_norm(&inj, &w.get(&format!("{pre}.post_norm.weight"))?, cfg.eps)?;
+    let inj = sub.rmsnorm(&inj, &w.get(&format!("{pre}.post_norm.weight"))?, cfg.eps)?;
     let h = h.broadcast_add(&inj)?;
-
-    // Learned per-layer rescale.
     Ok(h.broadcast_mul(&w.get(&format!("{pre}.layer_output_scale.weight"))?)?)
 }
 
@@ -175,21 +158,31 @@ pub fn input_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<Tensor
 }
 
 pub fn forward_embeds(cfg: &ArchConfig, w: &Weights, ids: &[u32]) -> Result<(Tensor, Tensor)> {
+    forward_embeds_with_substrate(&CandleSubstrate, cfg, w, ids)
+}
+
+pub fn forward_embeds_with_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, ids: &[u32],
+) -> Result<(Tensor, Tensor)> {
     let embeds = input_embeds(cfg, w, ids)?;
-    let ple = per_layer_inputs(cfg, w, ids, &embeds)?;
+    let ple = per_layer_inputs_with_substrate(sub, cfg, w, ids, &embeds)?;
     Ok((embeds, ple))
 }
 
-/// Logits from ready-made embeddings (text path's second half).
 pub fn forward_from_embeds(
     cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
 ) -> Result<Tensor> {
+    forward_from_embeds_with_substrate(&CandleSubstrate, cfg, w, cache, embeds, ple, q0)
+}
+
+pub fn forward_from_embeds_with_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, embeds: &Tensor, ple: &Tensor, q0: usize,
+) -> Result<Tensor> {
     let mut h = embeds.clone();
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, ple, q0)?;
+        h = layer(sub, cfg, w, cache, i, &h, ple, q0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
-    // Tied head: logits over the embedding rows.
+    h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let mut logits = w.linear(&h, "token_embd.weight")?;
     if let Some(cap) = cfg.final_softcap {
         logits = logits.affine((1.0 / cap) as f64, 0.0)?.tanh()?.affine(cap as f64, 0.0)?;
@@ -198,31 +191,34 @@ pub fn forward_from_embeds(
 }
 
 /// Logits `[1, seq, vocab]` for `ids` starting at absolute position `q0`.
-pub fn forward(
-    cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize,
+pub fn forward(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize) -> Result<Tensor> {
+    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+}
+
+pub fn forward_with_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, ids: &[u32], q0: usize,
 ) -> Result<Tensor> {
-    let (embeds, ple) = forward_embeds(cfg, w, ids)?;
-    forward_from_embeds(cfg, w, cache, &embeds, &ple, q0)
+    let (embeds, ple) = forward_embeds_with_substrate(sub, cfg, w, ids)?;
+    forward_from_embeds_with_substrate(sub, cfg, w, cache, &embeds, &ple, q0)
 }
 
 /// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
-pub fn forward_last_hidden(
-    cfg: &ArchConfig,
-    w: &Weights,
-    cache: &mut Cache,
-    prompt_ids: &[u32],
+pub fn forward_last_hidden(cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32]) -> Result<Tensor> {
+    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+}
+
+pub fn forward_last_hidden_with_substrate<S: SubstratePort>(
+    sub: &S, cfg: &ArchConfig, w: &Weights, cache: &mut Cache, prompt_ids: &[u32],
 ) -> Result<Tensor> {
     if prompt_ids.is_empty() {
-        return Err(crate::error::ModelError::Config(
-            "cannot score an empty prompt".into(),
-        ));
+        return Err(ModelError::Config("cannot score an empty prompt".into()));
     }
-    let (embeds, ple) = forward_embeds(cfg, w, prompt_ids)?;
+    let (embeds, ple) = forward_embeds_with_substrate(sub, cfg, w, prompt_ids)?;
     let mut h = embeds;
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, &ple, 0)?;
+        h = layer(sub, cfg, w, cache, i, &h, &ple, 0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let seq = h.dim(1)?;
     let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
     Ok(last)

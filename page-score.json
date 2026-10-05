@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "2e480c7",
+ "rev": "a6bde13",
  "dirty": true,
  "pages": [
   {
@@ -218,7 +218,7 @@
    "lines": 80,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 19
+   "reach": 18
   },
   {
    "path": "./crates/runtimed-core/src/governor/device_headroom.rs",
@@ -418,17 +418,17 @@
   },
   {
    "path": "./crates/runtimed-core/src/psi/mod.rs",
-   "lines": 25,
+   "lines": 24,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-core/src/psi/monitor.rs",
-   "lines": 113,
+   "lines": 84,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 1
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-core/src/psi/stack_reader.rs",
@@ -446,14 +446,14 @@
   },
   {
    "path": "./crates/runtimed-core/src/sensory/audio_ingest.rs",
-   "lines": 147,
+   "lines": 101,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-core/src/sensory/mod.rs",
-   "lines": 11,
+   "lines": 18,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -488,14 +488,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/lib.rs",
-   "lines": 10,
+   "lines": 12,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-daemon/src/main.rs",
-   "lines": 211,
+   "lines": 212,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -508,11 +508,25 @@
    "reach": 4
   },
   {
+   "path": "./crates/runtimed-daemon/src/psi.rs",
+   "lines": 49,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 5
+  },
+  {
    "path": "./crates/runtimed-daemon/src/runtime.rs",
    "lines": 197,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/sensory.rs",
+   "lines": 91,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 4
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/bridge/dispatch.rs",
@@ -691,7 +705,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/sensory/sensory1.rs",
-   "lines": 180,
+   "lines": 181,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -901,14 +915,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/gemma4.rs",
-   "lines": 229,
+   "lines": 225,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
   },
   {
    "path": "./crates/runtimed-model/src/arch/granite.rs",
-   "lines": 144,
+   "lines": 167,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -922,14 +936,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/arch/phi3.rs",
-   "lines": 118,
+   "lines": 142,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/arch/qwen2.rs",
-   "lines": 192,
+   "lines": 227,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -1118,7 +1132,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/sample.rs",
-   "lines": 170,
+   "lines": 196,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 7
@@ -1142,11 +1156,11 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 66
+   "reach": 68
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
-   "lines": 46,
+   "lines": 48,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1226,7 +1240,7 @@
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 2
+   "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/ops/ptx_marlin.rs",
@@ -1322,6 +1336,27 @@
   {
    "path": "./crates/runtimed-model/src/sampler/vocab_trie.rs",
    "lines": 185,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
+   "path": "./crates/runtimed-model/src/substrate/candle.rs",
+   "lines": 96,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 1
+  },
+  {
+   "path": "./crates/runtimed-model/src/substrate/mod.rs",
+   "lines": 20,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 0
+  },
+  {
+   "path": "./crates/runtimed-model/src/substrate/port.rs",
+   "lines": 77,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2
@@ -1482,14 +1517,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/weights/fp8_weight.rs",
-   "lines": 157,
+   "lines": 158,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/weights/linear_layer.rs",
-   "lines": 210,
+   "lines": 211,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0

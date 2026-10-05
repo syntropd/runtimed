@@ -2,6 +2,7 @@
 
 use super::store::Weights;
 use crate::error::{ModelError, Result};
+use crate::substrate::SubstratePort;
 use candle_core::quantized::QMatMul;
 use candle_core::{DType, Device, Module, Tensor};
 
@@ -58,7 +59,7 @@ impl Weights {
                 return Err(ModelError::Shape { name: name.into(), expected: vec![max_k], got: x.dims().to_vec() });
             }
             let mw = crate::ops::MarlinWeight { packed: packed.clone(), scales: scales.clone(), in_dim: x_in_dim, out_dim };
-            crate::ops::marlin_gemv(x, &mw)
+            crate::substrate::DEFAULT_SUBSTRATE.marlin_gemv(x, &mw)
         } else {
             self.linear_dense(x, name)
         }
@@ -69,7 +70,7 @@ impl Weights {
             let x_in_dim = *x.dims().last().unwrap_or(&0);
             let out_dim = scales.elem_count();
             let mw = crate::ops::MarlinWeight { packed: packed.clone(), scales: scales.clone(), in_dim: x_in_dim, out_dim };
-            return crate::ops::marlin_gemv(x, &mw);
+            return crate::substrate::DEFAULT_SUBSTRATE.marlin_gemv(x, &mw);
         }
         let w = self.get_raw(name)?;
         let wt = w.t()?;
@@ -82,7 +83,7 @@ impl Weights {
                 Some(s) => s.clone(),
                 None => Tensor::ones(out_dim, DType::F32, w.device())?,
             };
-            return crate::ops::fp8_gemm(x, w, &scale);
+            return crate::substrate::DEFAULT_SUBSTRATE.fp8_gemm(x, w, &scale);
         }
         let dims = x.dims().to_vec();
         let Some(last) = dims.last() else {
@@ -96,7 +97,7 @@ impl Weights {
         Self::ensure_current(dev)?;
         let x_dev = if !x.device().same_device(dev) { x.to_device(dev)? } else { x.clone() };
         let x_cast = if x_dev.dtype() != wt.dtype() { x_dev.to_dtype(wt.dtype())? } else { x_dev };
-        let y = x_cast.reshape((rows, in_dim))?.matmul(&wt)?;
+        let y = crate::substrate::DEFAULT_SUBSTRATE.matmul(&x_cast.reshape((rows, in_dim))?, &wt)?;
         let y = if y.dtype() != x.dtype() { y.to_dtype(x.dtype())? } else { y };
         let mut out_shape = dims[..dims.len() - 1].to_vec();
         out_shape.push(out_dim);

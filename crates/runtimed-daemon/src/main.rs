@@ -6,6 +6,7 @@ use runtimed_core::model::idle::idle_limit_secs;
 use runtimed_core::model::ModelManager;
 use runtimed_daemon::activation::parse_listen_fds;
 use runtimed_daemon::notify::{notify_ready, NOTIFY_MAX};
+use runtimed_daemon::psi::spawn_psi_monitor;
 use runtimed_daemon::runtime::{finish_shutdown, spawn_idle_unloader, spawn_watchdog, SHUTDOWN_TIMEOUT};
 use runtimed_daemon::varlink::{lookup_group, Runtime1Handler, TrustedGroup, VarlinkServer, UNRESOLVED_GID};
 use std::fs;
@@ -105,7 +106,7 @@ async fn main() -> Result<()> {
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let watchdog_handle = spawn_watchdog(shutdown_rx.clone());
-    let psi_handle = runtimed_core::psi::spawn_psi_monitor(
+    let psi_handle = spawn_psi_monitor(
         Arc::clone(&model_manager),
         shutdown_rx.clone(),
     );

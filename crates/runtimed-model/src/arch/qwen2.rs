@@ -2,12 +2,12 @@
 //!
 //! Per layer: `h += attn(ln1(h))`, `h += mlp(ln2(h))`, with QKV bias,
 //! SwiGLU, full causal attention, untied LM head. No scaling tricks.
+//! All tensor math operates behind the sovereign `SubstratePort` boundary.
 
 use crate::config::ArchConfig;
 use crate::error::Result;
-use crate::ops;
+use crate::substrate::{CandleSubstrate, Device, SubstratePort, Tensor};
 use crate::weights::Weights;
-use candle_core::Tensor;
 
 /// Per-layer contiguous chunked O(1) KV cache.
 pub struct Cache {
@@ -37,14 +37,25 @@ impl Cache {
         }
     }
 
-    pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, _dev: &candle_core::Device) -> Result<(Tensor, Tensor)> {
+    pub fn append(&mut self, layer: usize, k: &Tensor, v: &Tensor, dev: &Device) -> Result<(Tensor, Tensor)> {
+        self.append_with_substrate(&CandleSubstrate, layer, k, v, dev)
+    }
+
+    pub fn append_with_substrate<S: SubstratePort>(
+        &mut self,
+        sub: &S,
+        layer: usize,
+        k: &Tensor,
+        v: &Tensor,
+        _dev: &Device,
+    ) -> Result<(Tensor, Tensor)> {
         if layer >= self.entries.len() {
             return Err(crate::error::ModelError::Config(format!("layer {layer} out of bounds")));
         }
         match &mut self.entries[layer] {
             Some(kv) => kv.append(k, v),
             None => {
-                let kv = crate::cache::LayerKv::new(k, v, 256)?;
+                let kv = sub.alloc_kv(k, v, 256)?;
                 let res = kv.current()?;
                 self.entries[layer] = Some(kv);
                 Ok(res)
@@ -65,7 +76,7 @@ impl Cache {
     }
 
     /// Prefetch up to `max_layers` spilled CPU KV layers back to target compute device.
-    pub fn prefetch_layers(&mut self, dev: &candle_core::Device, max_layers: usize) -> Result<usize> {
+    pub fn prefetch_layers(&mut self, dev: &Device, max_layers: usize) -> Result<usize> {
         let mut n = 0;
         for kv in self.entries.iter_mut().flatten() {
             if n >= max_layers { break; }
@@ -77,7 +88,8 @@ impl Cache {
     }
 }
 
-fn layer(
+fn layer<S: SubstratePort>(
+    sub: &S,
     cfg: &ArchConfig,
     w: &Weights,
     cache: &mut Cache,
@@ -97,7 +109,7 @@ fn layer(
     };
 
     // Attention block.
-    let n = ops::rms_norm(&h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
+    let n = sub.rmsnorm(&h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
     let bias = cfg.has_qkv_bias;
     let bq = bias.then(|| format!("{pre}.attn_q.bias"));
     let bk = bias.then(|| format!("{pre}.attn_k.bias"));
@@ -110,28 +122,28 @@ fn layer(
     let q = split(w.linear_bias(&n, &format!("{pre}.attn_q.weight"), bq.as_deref())?)?;
     let k = split(w.linear_bias(&n, &format!("{pre}.attn_k.weight"), bk.as_deref())?)?;
     let v = split(w.linear_bias(&n, &format!("{pre}.attn_v.weight"), bv.as_deref())?)?;
-    let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
-    let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
+    let q = sub.rope(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
+    let k = sub.rope(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
     // Extend the KV cache in O(1) contiguous chunked storage and attend over it.
-    let (k_full, v_full) = cache.append(i, &k, &v, dev)?;
+    let (k_full, v_full) = cache.append_with_substrate(sub, i, &k, &v, dev)?;
     let total = k_full.dim(2)?;
     let mask = if t == 1 {
         None
     } else {
-        Some(ops::causal_mask(t, total, q0, None, dev)?)
+        Some(sub.causal_mask(t, total, q0, None, dev)?)
     };
     let scale = (lc.head_dim as f32).sqrt().recip();
-    let o = ops::attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
+    let o = sub.attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
     let h = h.broadcast_add(&o)?;
 
     // MLP block.
-    let n = ops::rms_norm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
+    let n = sub.rmsnorm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
     let g = w.linear(&n, &format!("{pre}.ffn_gate.weight"))?;
     let u = w.linear(&n, &format!("{pre}.ffn_up.weight"))?;
     let mlp = w.linear(
-        &ops::silu(&g)?.broadcast_mul(&u)?,
+        &sub.silu(&g)?.broadcast_mul(&u)?,
         &format!("{pre}.ffn_down.weight"),
     )?;
     Ok(h.broadcast_add(&mlp)?)
@@ -145,9 +157,21 @@ pub fn forward(
     ids: &[u32],
     q0: usize,
 ) -> Result<Tensor> {
+    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+}
+
+/// Logits `[1, seq, vocab]` evaluated through explicit `SubstratePort`.
+pub fn forward_with_substrate<S: SubstratePort>(
+    sub: &S,
+    cfg: &ArchConfig,
+    w: &Weights,
+    cache: &mut Cache,
+    ids: &[u32],
+    q0: usize,
+) -> Result<Tensor> {
     let mut h = w.embed("token_embd.weight", ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, q0)?;
+        h = layer(sub, cfg, w, cache, i, &h, q0)?;
     }
     let norm_w = w.get_raw("output_norm.weight")?;
     let out_dev = norm_w.device();
@@ -157,12 +181,23 @@ pub fn forward(
     } else {
         h
     };
-    let h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     w.linear(&h, "output.weight")
 }
 
 /// Normalized final hidden state `[1, hidden_dim]` for `prompt_ids`.
 pub fn forward_last_hidden(
+    cfg: &ArchConfig,
+    w: &Weights,
+    cache: &mut Cache,
+    prompt_ids: &[u32],
+) -> Result<Tensor> {
+    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+}
+
+/// Normalized final hidden state evaluated through explicit `SubstratePort`.
+pub fn forward_last_hidden_with_substrate<S: SubstratePort>(
+    sub: &S,
     cfg: &ArchConfig,
     w: &Weights,
     cache: &mut Cache,
@@ -175,7 +210,7 @@ pub fn forward_last_hidden(
     }
     let mut h = w.embed("token_embd.weight", prompt_ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, 0)?;
+        h = layer(sub, cfg, w, cache, i, &h, 0)?;
     }
     let norm_w = w.get_raw("output_norm.weight")?;
     let out_dev = norm_w.device();
@@ -185,7 +220,7 @@ pub fn forward_last_hidden(
     } else {
         h
     };
-    let h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    let h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let seq = h.dim(1)?;
     let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
     Ok(last)

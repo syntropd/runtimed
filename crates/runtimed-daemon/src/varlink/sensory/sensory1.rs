@@ -1,8 +1,9 @@
 //! Handler implementation for io.syntrop.Sensory1 Varlink interface.
 
+use crate::sensory::capture_audio_pcm;
 use crate::varlink::server::protocol::VarlinkReply;
 use runtimed_core::sensory::{
-    capture_audio_pcm, capture_screen_image, capture_video_frame, evaluate_operator_presence,
+    capture_screen_image, capture_video_frame, evaluate_operator_presence,
 };
 use serde_json::{json, Value};
 

@@ -2,16 +2,17 @@
 //!
 //! Per layer: `h += attn(ln1(h))`, `h += mlp(ln2(h))`,
 //! with packed QKV projection, fused gate/up FFN, SwiGLU, and full causal attention.
+//! All tensor math operates behind the sovereign `SubstratePort` boundary.
 
 use crate::config::ArchConfig;
 use crate::error::Result;
-use crate::ops;
+use crate::substrate::{CandleSubstrate, SubstratePort, Tensor};
 use crate::weights::Weights;
-use candle_core::Tensor;
 
 pub use crate::arch::qwen2::Cache;
 
-fn layer(
+fn layer<S: SubstratePort>(
+    sub: &S,
     cfg: &ArchConfig,
     w: &Weights,
     cache: &mut Cache,
@@ -24,7 +25,7 @@ fn layer(
     let dev = w.device();
 
     // Attention block with packed QKV.
-    let n = ops::rms_norm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
+    let n = sub.rmsnorm(h, &w.get(&format!("{pre}.attn_norm.weight"))?, cfg.eps)?;
     let t = n.dim(1)?;
     let q_dim = lc.n_head * lc.head_dim;
     let k_dim = lc.n_kv * lc.head_dim;
@@ -46,30 +47,30 @@ fn layer(
     let k = split_kv(k)?;
     let v = split_kv(v)?;
 
-    let q = ops::rope_neox(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
-    let k = ops::rope_neox(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
+    let q = sub.rope(&q, q0, lc.rope_theta, lc.rope_dim, None)?;
+    let k = sub.rope(&k, q0, lc.rope_theta, lc.rope_dim, None)?;
 
     // Extend the KV cache in O(1) contiguous chunked storage and attend over it.
-    let (k_full, v_full) = cache.append(i, &k, &v, dev)?;
+    let (k_full, v_full) = cache.append_with_substrate(sub, i, &k, &v, dev)?;
     let total = k_full.dim(2)?;
     let mask = if t == 1 {
         None
     } else {
-        Some(ops::causal_mask(t, total, q0, None, dev)?)
+        Some(sub.causal_mask(t, total, q0, None, dev)?)
     };
     let scale = cfg.attn_scale.unwrap_or_else(|| (lc.head_dim as f32).sqrt().recip());
-    let o = ops::attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
+    let o = sub.attention(&q, &k_full, &v_full, mask.as_ref(), scale)?;
     let o = o.transpose(1, 2)?.reshape((1, t, lc.n_head * lc.head_dim))?;
     let o = w.linear(&o, &format!("{pre}.attn_output.weight"))?;
     let h = h.broadcast_add(&o)?;
 
     // MLP block with fused gate/up projection.
-    let n = ops::rms_norm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
+    let n = sub.rmsnorm(&h, &w.get(&format!("{pre}.ffn_norm.weight"))?, cfg.eps)?;
     let ffn_up = w.linear(&n, &format!("{pre}.ffn_up.weight"))?;
     let gate = ffn_up.narrow(2, 0, lc.ffn)?;
     let up = ffn_up.narrow(2, lc.ffn, lc.ffn)?;
     let mlp = w.linear(
-        &ops::silu(&gate)?.broadcast_mul(&up)?,
+        &sub.silu(&gate)?.broadcast_mul(&up)?,
         &format!("{pre}.ffn_down.weight"),
     )?;
     Ok(h.broadcast_add(&mlp)?)
@@ -83,11 +84,23 @@ pub fn forward(
     ids: &[u32],
     q0: usize,
 ) -> Result<Tensor> {
+    forward_with_substrate(&CandleSubstrate, cfg, w, cache, ids, q0)
+}
+
+/// Logits `[1, seq, vocab]` evaluated through explicit `SubstratePort`.
+pub fn forward_with_substrate<S: SubstratePort>(
+    sub: &S,
+    cfg: &ArchConfig,
+    w: &Weights,
+    cache: &mut Cache,
+    ids: &[u32],
+    q0: usize,
+) -> Result<Tensor> {
     let mut h = w.embed("token_embd.weight", ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, q0)?;
+        h = layer(sub, cfg, w, cache, i, &h, q0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     if w.contains_key("output.weight") {
         w.linear(&h, "output.weight")
     } else {
@@ -102,6 +115,17 @@ pub fn forward_last_hidden(
     cache: &mut Cache,
     prompt_ids: &[u32],
 ) -> Result<Tensor> {
+    forward_last_hidden_with_substrate(&CandleSubstrate, cfg, w, cache, prompt_ids)
+}
+
+/// Normalized final hidden state evaluated through explicit `SubstratePort`.
+pub fn forward_last_hidden_with_substrate<S: SubstratePort>(
+    sub: &S,
+    cfg: &ArchConfig,
+    w: &Weights,
+    cache: &mut Cache,
+    prompt_ids: &[u32],
+) -> Result<Tensor> {
     if prompt_ids.is_empty() {
         return Err(crate::error::ModelError::Config(
             "cannot score an empty prompt".into(),
@@ -109,9 +133,9 @@ pub fn forward_last_hidden(
     }
     let mut h = w.embed("token_embd.weight", prompt_ids)?;
     for i in 0..cfg.n_layer {
-        h = layer(cfg, w, cache, i, &h, 0)?;
+        h = layer(sub, cfg, w, cache, i, &h, 0)?;
     }
-    h = ops::rms_norm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
+    h = sub.rmsnorm(&h, &w.get("output_norm.weight")?, cfg.eps)?;
     let seq = h.dim(1)?;
     let last = h.narrow(1, seq - 1, 1)?.squeeze(1)?;
     Ok(last)

@@ -2,32 +2,48 @@
 //!
 //! The differential oracle runs at temperature 0 (pure argmax); the
 //! stochastic paths exist for real generation in Phase 3.
+//! All tensor operations route through `SubstratePort`.
 
 use crate::error::Result;
-use candle_core::Tensor;
+use crate::substrate::{CandleSubstrate, SubstratePort, Tensor};
 
 /// Greedy decode: the argmax id of a `[vocab]` logit row.
 pub fn greedy(logits: &Tensor) -> Result<u32> {
-    let id = logits.argmax(0)?.to_scalar::<u32>()?;
-    Ok(id)
+    greedy_with_substrate(&CandleSubstrate, logits)
+}
+
+/// Greedy decode evaluated through explicit `SubstratePort`.
+pub fn greedy_with_substrate<S: SubstratePort>(sub: &S, logits: &Tensor) -> Result<u32> {
+    sub.argmax(logits, 0)
 }
 
 /// Compute normalized probabilities over a `[vocab]` logit row.
 /// When `temperature <= 0.0`, returns a 1-hot probability vector at the greedy argmax.
 pub fn probs(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32) -> Result<Vec<f32>> {
+    probs_with_substrate(&CandleSubstrate, logits, temperature, top_k, top_p)
+}
+
+/// Compute normalized probabilities through explicit `SubstratePort`.
+pub fn probs_with_substrate<S: SubstratePort>(
+    sub: &S,
+    logits: &Tensor,
+    temperature: f32,
+    top_k: usize,
+    top_p: f32,
+) -> Result<Vec<f32>> {
     let vocab_size = logits.dim(0).unwrap_or(0);
     if vocab_size == 0 {
         return Ok(Vec::new());
     }
     if temperature <= 0.0 {
-        let best_idx = logits.argmax(0)?.to_scalar::<u32>()? as usize;
+        let best_idx = sub.argmax(logits, 0)? as usize;
         let mut p = vec![0.0f32; vocab_size];
         if best_idx < p.len() {
             p[best_idx] = 1.0;
         }
         return Ok(p);
     }
-    let mut v = logits.to_vec1::<f32>()?;
+    let mut v = sub.to_vec1(logits)?;
     for x in v.iter_mut() {
         *x /= temperature;
     }
@@ -104,17 +120,29 @@ pub fn sample_from_probs(p: &[f32], mut rand01: impl FnMut() -> f32) -> u32 {
 /// Temperature + top-k + top-p sampling over a `[vocab]` row.
 /// `temperature <= 0` means greedy. `rand01` supplies uniform draws.
 pub fn sample(logits: &Tensor, temperature: f32, top_k: usize, top_p: f32, rand01: impl FnMut() -> f32) -> Result<u32> {
+    sample_with_substrate(&CandleSubstrate, logits, temperature, top_k, top_p, rand01)
+}
+
+/// Sample next token through explicit `SubstratePort`.
+pub fn sample_with_substrate<S: SubstratePort>(
+    sub: &S,
+    logits: &Tensor,
+    temperature: f32,
+    top_k: usize,
+    top_p: f32,
+    rand01: impl FnMut() -> f32,
+) -> Result<u32> {
     if temperature <= 0.0 {
-        return greedy(logits);
+        return greedy_with_substrate(sub, logits);
     }
-    let p = probs(logits, temperature, top_k, top_p)?;
+    let p = probs_with_substrate(sub, logits, temperature, top_k, top_p)?;
     Ok(sample_from_probs(&p, rand01))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::Device;
+    use crate::substrate::Device;
 
     #[test]
     fn greedy_picks_max() {
@@ -127,7 +155,6 @@ mod tests {
     #[test]
     fn top_k_truncates_tail() {
         let dev = Device::Cpu;
-        // With top_k = 1 only id 1 can ever come out.
         let l = Tensor::from_vec(vec![0.0f32, 10.0, 9.0], 3, &dev).unwrap();
         for i in 0..20 {
             let id = sample(&l, 1.0, 1, 1.0, || (i as f32 + 0.5) / 20.0).unwrap();
@@ -138,7 +165,6 @@ mod tests {
     #[test]
     fn top_p_keeps_nucleus() {
         let dev = Device::Cpu;
-        // Id 2 holds ~all mass; top_p = 0.5 keeps id 2 alone.
         let l = Tensor::from_vec(vec![-10.0f32, -10.0, 0.0], 3, &dev).unwrap();
         let id = sample(&l, 1.0, 0, 0.5, || 0.0).unwrap();
         assert_eq!(id, 2);

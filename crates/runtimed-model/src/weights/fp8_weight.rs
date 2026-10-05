@@ -1,6 +1,7 @@
 //! FP8 (E4M3) weight storage with per-channel scaling.
 
 use crate::error::{ModelError, Result};
+use crate::substrate::SubstratePort;
 use candle_core::{DType, Device, Tensor};
 
 /// Quantized FP8 weight with per-channel scale factors.
@@ -92,7 +93,7 @@ impl Fp8Weight {
     }
 
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
-        crate::ops::fp8_gemm(x, &self.weight, &self.scale)
+        crate::substrate::DEFAULT_SUBSTRATE.fp8_gemm(x, &self.weight, &self.scale)
     }
 }
 

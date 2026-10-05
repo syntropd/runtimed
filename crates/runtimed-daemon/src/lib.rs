@@ -2,7 +2,9 @@
 
 pub mod activation;
 pub mod notify;
+pub mod psi;
 pub mod runtime;
+pub mod sensory;
 pub mod varlink;
 
 pub use activation::{parse_listen_fds, ActivatedSockets};

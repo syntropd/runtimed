@@ -18,7 +18,6 @@ pub use monitor::{
     evaluate_and_shed_memory,
     parse_psi_avg10,
     read_memory_psi,
-    spawn_psi_monitor,
     DEFAULT_PSI_MEMORY_PATH,
 };
 pub use stack_reader::{StackPsiReader, StackPsiValues};

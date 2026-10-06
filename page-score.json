@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "e55448e",
- "dirty": true,
+ "rev": "3a92b79",
+ "dirty": false,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -530,7 +530,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/threading.rs",
-   "lines": 211,
+   "lines": 223,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

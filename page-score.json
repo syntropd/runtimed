@@ -1,7 +1,7 @@
 {
  "repo": "runtimed",
- "rev": "bb1de19",
- "dirty": false,
+ "rev": "e55448e",
+ "dirty": true,
  "pages": [
   {
    "path": "./crates/runtimectl/src/client.rs",
@@ -488,14 +488,14 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/lib.rs",
-   "lines": 12,
+   "lines": 14,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
   },
   {
    "path": "./crates/runtimed-daemon/src/main.rs",
-   "lines": 212,
+   "lines": 219,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -527,6 +527,13 @@
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 4
+  },
+  {
+   "path": "./crates/runtimed-daemon/src/threading.rs",
+   "lines": 211,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/bridge/dispatch.rs",

@@ -8,6 +8,13 @@ After=network.target runtimed.socket
 Type=notify
 User=syntrop-runtime
 Group=syntrop
+Environment="RUNTIMED_IDLE_UNLOAD_SECS=300"
+# CPU affinity and multi-core threading: runtimed automatically detects
+# physical CPU cores and initializes Candle and Rayon thread pools out-of-the-box.
+# Explicit threading overrides can be configured via drop-in units in
+# /etc/systemd/system/runtimed.service.d/*.conf:
+# Environment="CANDLE_NUM_THREADS=4"
+# Environment="RAYON_NUM_THREADS=4"
 # No RuntimeDirectory: /run/syntrop is owned by runtimed.socket (plus the
 # whole syntrop-sockets.target fleet). A service-level RuntimeDirectory
 # would wipe every fleet socket file on each (re)start. tmpfiles.d owns
@@ -47,7 +54,7 @@ DeviceAllow=char-video4linux rw
 # the ceiling must clear it (smaller brains never approach these).
 MemoryHigh=24G
 MemoryMax=32G
-TasksMax=64
+TasksMax=512
 
 [Install]
 WantedBy=multi-user.target

@@ -29,6 +29,7 @@ anyhow.workspace = true
 base64.workspace = true
 image.workspace = true
 libc.workspace = true
+rayon.workspace = true
 rustix.workspace = true
 runtimed-core = { package = "syntrop-runtimed-core", version = "0.6.2", path = "../runtimed-core" }
 runtimed-model = { package = "syntrop-runtimed-model", version = "0.6.2", path = "../runtimed-model" }

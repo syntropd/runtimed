@@ -8,6 +8,7 @@ use runtimed_daemon::activation::parse_listen_fds;
 use runtimed_daemon::notify::{notify_ready, NOTIFY_MAX};
 use runtimed_daemon::psi::spawn_psi_monitor;
 use runtimed_daemon::runtime::{finish_shutdown, spawn_idle_unloader, spawn_watchdog, SHUTDOWN_TIMEOUT};
+use runtimed_daemon::threading::init_threading;
 use runtimed_daemon::varlink::{lookup_group, Runtime1Handler, TrustedGroup, VarlinkServer, UNRESOLVED_GID};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -33,6 +34,12 @@ async fn main() -> Result<()> {
         )
         .init();
     info!("Starting runtimed (Headless Model Execution & Tensor Generation Daemon)");
+
+    let cpu_topo = init_threading();
+    info!(
+        "CPU threading initialized: {} threads allocated ({} physical cores, {} logical threads)",
+        cpu_topo.default_threads, cpu_topo.physical_cores, cpu_topo.logical_cores
+    );
 
     let args: Vec<String> = std::env::args().collect();
     let mut config_path =

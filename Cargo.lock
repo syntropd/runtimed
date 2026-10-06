@@ -1981,6 +1981,7 @@ dependencies = [
  "base64 0.22.1",
  "image",
  "libc",
+ "rayon",
  "rustix 0.38.44",
  "serde",
  "serde_json",

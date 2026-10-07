@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "e6b17bd",
+ "rev": "a7f085d",
  "dirty": false,
  "pages": [
   {
@@ -670,7 +670,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/src/varlink/methods/runtime1.rs",
-   "lines": 243,
+   "lines": 252,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 8
@@ -782,7 +782,7 @@
   },
   {
    "path": "./crates/runtimed-daemon/tests/integration/speculative_test.rs",
-   "lines": 181,
+   "lines": 208,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1132,7 +1132,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/generate.rs",
-   "lines": 195,
+   "lines": 225,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 14
@@ -1363,7 +1363,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/substrate/candle.rs",
-   "lines": 96,
+   "lines": 125,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

@@ -9,7 +9,7 @@
 mod candle;
 mod port;
 
-pub use candle::{CandleSubstrate, DEFAULT_SUBSTRATE};
+pub use candle::{with_tree_attention_mask, CandleSubstrate, DEFAULT_SUBSTRATE};
 pub use port::SubstratePort;
 
 pub use candle_core::{DType, Device, Tensor};

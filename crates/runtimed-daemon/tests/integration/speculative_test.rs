@@ -99,6 +99,33 @@ async fn test_speculative_generation_wire_protocol_roundtrip() {
 }
 
 #[tokio::test]
+async fn test_tree_speculative_generation_wire_protocol_roundtrip() {
+    let tmp = tempdir().expect("tempdir");
+    let manager = Arc::new(ModelManager::new(tmp.path()));
+    let handler = Runtime1Handler::new(manager);
+
+    let params = json!({
+        "model": "qwen2.5-7b",
+        "speculative_draft_model": "qwen2.5-0.5b",
+        "speculative_tree": true,
+        "tree_depth": 3,
+        "branch_factor": 2,
+        "prompt": "Evaluate tree speculative draft execution",
+        "max_tokens": 8
+    });
+
+    let reply = handler
+        .handle_call("io.syntrop.Runtime1.Generate", Some(&params))
+        .await
+        .expect("reply");
+
+    assert_eq!(
+        reply.error.as_deref(),
+        Some("io.syntrop.Runtime1.GenerationFailed")
+    );
+}
+
+#[tokio::test]
 async fn test_speculative_generation_self_speculation_rejected() {
     let tmp = tempdir().expect("tempdir");
     let manager = Arc::new(ModelManager::new(tmp.path()));

@@ -8,6 +8,27 @@ use crate::cache::LayerKv;
 use crate::error::Result;
 use crate::ops::{self, MarlinWeight};
 use candle_core::{Device, Tensor};
+use std::cell::RefCell;
+
+thread_local! {
+    static ACTIVE_TREE_MASK: RefCell<Option<Tensor>> = const { RefCell::new(None) };
+}
+
+/// Scope an active tree attention mask for tree-based speculative decoding.
+pub fn with_tree_attention_mask<F, R>(mask: Tensor, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            ACTIVE_TREE_MASK.with(|m| *m.borrow_mut() = None);
+        }
+    }
+    ACTIVE_TREE_MASK.with(|m| *m.borrow_mut() = Some(mask));
+    let _guard = Guard;
+    f()
+}
 
 /// Concrete substrate backed by Candle and hardware-accelerated kernels.
 #[derive(Debug, Clone, Copy, Default)]
@@ -51,6 +72,14 @@ impl SubstratePort for CandleSubstrate {
         sink: Option<usize>,
         dev: &Device,
     ) -> Result<Tensor> {
+        let active = ACTIVE_TREE_MASK.with(|m| m.borrow().clone());
+        if let Some(mask) = active {
+            if let Ok(dims) = mask.dims2() {
+                if dims.0 == t && dims.1 == total {
+                    return Ok(mask);
+                }
+            }
+        }
         ops::causal_mask(t, total, q0, sink, dev)
     }
 

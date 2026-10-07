@@ -1,7 +1,9 @@
 //! Handler implementation for io.syntrop.Runtime1 Varlink interface.
 
 use crate::varlink::server::protocol::VarlinkReply;
-use runtimed_core::engine::{generate_speculative, generate_tokens, GenerationRequest, ReasoningEffort};
+use runtimed_core::engine::{
+    generate_speculative, generate_speculative_tree, generate_tokens, GenerationRequest, ReasoningEffort,
+};
 use runtimed_core::model::ModelManager;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -117,6 +119,9 @@ impl Runtime1Handler {
         let reasoning_effort = params.get("reasoning_effort").and_then(|v| v.as_str()).and_then(|s| s.parse::<ReasoningEffort>().ok());
         let speculative_draft_model = params.get("speculative_draft_model").and_then(|v| v.as_str()).map(str::to_string);
         let k_draft = params.get("k_draft").and_then(|v| v.as_u64()).map(|v| (v as usize).clamp(2, 8)).unwrap_or(4);
+        let spec_tree = params.get("speculative_tree").and_then(|v| v.as_bool()).unwrap_or(false);
+        let tree_depth = params.get("tree_depth").and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(3);
+        let branch_factor = params.get("branch_factor").and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(2);
 
         if let Some(ref draft_name) = speculative_draft_model {
             if draft_name == model_name {
@@ -211,7 +216,11 @@ impl Runtime1Handler {
         let entry_task = Arc::clone(&entry);
         let output = tokio::task::spawn_blocking(move || {
             let res = if let Some(draft) = draft_entry {
-                generate_speculative(&entry_task, &draft, &request, k_draft)
+                if spec_tree {
+                    generate_speculative_tree(&entry_task, &draft, &request, tree_depth, branch_factor)
+                } else {
+                    generate_speculative(&entry_task, &draft, &request, k_draft)
+                }
             } else {
                 generate_tokens(&entry_task, &request)
             };

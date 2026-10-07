@@ -192,4 +192,34 @@ mod tests {
         assert_eq!(logits.dims(), &[1, 176, 8]);
         assert_eq!(m.forwards, 3);
     }
+
+    #[test]
+    fn test_prefill_chunked_exact_multiples_512() {
+        let mut m = Stub { vocab: 8, id: 2, forwards: 0 };
+        let prompt_512 = vec![1u32; 512];
+        let logits = prefill_chunked(&mut m, &prompt_512, 512).unwrap();
+        assert_eq!(logits.dims(), &[1, 512, 8]);
+        assert_eq!(m.forwards, 1);
+
+        let mut m2 = Stub { vocab: 8, id: 2, forwards: 0 };
+        let prompt_1024 = vec![1u32; 1024];
+        let logits2 = prefill_chunked(&mut m2, &prompt_1024, 512).unwrap();
+        assert_eq!(logits2.dims(), &[1, 512, 8]);
+        assert_eq!(m2.forwards, 2);
+    }
+
+    #[test]
+    fn test_prefill_chunked_single_and_empty() {
+        let mut m = Stub { vocab: 8, id: 2, forwards: 0 };
+        let single = vec![42u32];
+        let l1 = prefill_chunked(&mut m, &single, 512).unwrap();
+        assert_eq!(l1.dims(), &[1, 1, 8]);
+        assert_eq!(m.forwards, 1);
+
+        let mut m_empty = Stub { vocab: 8, id: 2, forwards: 0 };
+        let empty: Vec<u32> = Vec::new();
+        let l0 = prefill_chunked(&mut m_empty, &empty, 512).unwrap();
+        assert_eq!(m_empty.forwards, 1);
+        assert_eq!(l0.dim(2).unwrap(), 8);
+    }
 }

@@ -27,7 +27,7 @@ fn detect_cgroup_quota_cgroupv2(cgroup_content: &str, base: &Path) -> Option<usi
                 if quota_s != "max" {
                     let q: u64 = quota_s.parse().ok()?;
                     let p: u64 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(100_000);
-                    if p > 0 { return Some((q / p).max(1) as usize); }
+                    return q.checked_div(p).map(|d| d.max(1) as usize);
                 }
             }
             if !cur.pop() { break; }
@@ -40,7 +40,7 @@ fn detect_cgroup_quota_cgroupv1(base: &Path) -> Option<usize> {
     let q: i64 = fs::read_to_string(base.join("cpu/cpu.cfs_quota_us")).ok()?.trim().parse().ok()?;
     if q <= 0 { return None; }
     let p: u64 = fs::read_to_string(base.join("cpu/cpu.cfs_period_us")).ok()?.trim().parse().ok().unwrap_or(100_000);
-    (p > 0).then(|| (q as u64 / p).max(1) as usize)
+    (q as u64).checked_div(p).map(|d| d.max(1) as usize)
 }
 
 pub fn detect_cgroup_quota() -> Option<usize> {

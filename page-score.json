@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "3a92b79",
+ "rev": "e6b17bd",
  "dirty": false,
  "pages": [
   {
@@ -166,7 +166,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/generator.rs",
-   "lines": 248,
+   "lines": 250,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 3
@@ -194,7 +194,7 @@
   },
   {
    "path": "./crates/runtimed-core/src/engine/speculate_engine.rs",
-   "lines": 156,
+   "lines": 219,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
@@ -1132,14 +1132,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/decode/generate.rs",
-   "lines": 158,
+   "lines": 195,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 13
+   "reach": 14
   },
   {
    "path": "./crates/runtimed-model/src/decode/mod.rs",
-   "lines": 12,
+   "lines": 18,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 0
@@ -1149,14 +1149,14 @@
    "lines": 196,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 7
+   "reach": 8
   },
   {
    "path": "./crates/runtimed-model/src/decode/session.rs",
    "lines": 252,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 5
+   "reach": 6
   },
   {
    "path": "./crates/runtimed-model/src/decode/speculate.rs",
@@ -1166,11 +1166,18 @@
    "reach": 3
   },
   {
+   "path": "./crates/runtimed-model/src/decode/tree_speculate.rs",
+   "lines": 253,
+   "bin_bytes": null,
+   "heat_pct": null,
+   "reach": 2
+  },
+  {
    "path": "./crates/runtimed-model/src/error.rs",
    "lines": 45,
    "bin_bytes": null,
    "heat_pct": null,
-   "reach": 72
+   "reach": 73
   },
   {
    "path": "./crates/runtimed-model/src/lib.rs",
@@ -1223,7 +1230,7 @@
   },
   {
    "path": "./crates/runtimed-model/src/ops/attention.rs",
-   "lines": 145,
+   "lines": 208,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1

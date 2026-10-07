@@ -41,6 +41,34 @@ pub fn last_row(logits: &Tensor) -> Result<Tensor> {
     Ok(logits.narrow(1, t - 1, 1)?.squeeze(1)?.squeeze(0)?)
 }
 
+/// Default prompt prefill micro-batch chunk size in tokens.
+pub const DEFAULT_PREFILL_CHUNK_SIZE: usize = 512;
+
+/// Prefill prompt tokens in chunked micro-batches of up to `chunk_size` tokens.
+///
+/// Iteratively populates the internal KV cache while preventing memory spikes
+/// and returns the final logits `[1, chunk_seq, vocab]` for the last chunk.
+pub fn prefill_chunked<M: TextModel>(
+    model: &mut M,
+    prompt: &[u32],
+    chunk_size: usize,
+) -> Result<Tensor> {
+    if prompt.is_empty() {
+        return model.forward(prompt, 0);
+    }
+    let chunk_size = chunk_size.max(1);
+    let mut offset = 0;
+    let mut last_logits = None;
+    while offset < prompt.len() {
+        let end = (offset + chunk_size).min(prompt.len());
+        let chunk = &prompt[offset..end];
+        let logits = model.forward(chunk, offset)?;
+        offset = end;
+        last_logits = Some(logits);
+    }
+    last_logits.ok_or_else(|| crate::error::ModelError::Config("empty prompt prefill".into()))
+}
+
 /// Generate up to `max_new` ids after `prompt` (prompt excluded from output).
 /// Stops early on any id in `eos`. `next` maps a `[vocab]` row to one id.
 pub fn generate<M: TextModel>(
@@ -51,7 +79,7 @@ pub fn generate<M: TextModel>(
     mut next: impl FnMut(&Tensor) -> Result<u32>,
 ) -> Result<Vec<u32>> {
     model.reset();
-    let logits = model.forward(prompt, 0)?;
+    let logits = prefill_chunked(model, prompt, DEFAULT_PREFILL_CHUNK_SIZE)?;
     decode_loop(model, &logits, prompt.len(), eos, max_new, &mut next)
 }
 
@@ -154,5 +182,14 @@ mod tests {
         let out = generate(&mut m, &[1, 2], &[5], 4, argmax).unwrap();
         assert_eq!(out, vec![3, 3, 3, 3]);
         assert_eq!(m.forwards, 4);
+    }
+
+    #[test]
+    fn test_prefill_chunked_multi_batch() {
+        let mut m = Stub { vocab: 8, id: 2, forwards: 0 };
+        let prompt = vec![1u32; 1200];
+        let logits = prefill_chunked(&mut m, &prompt, 512).unwrap();
+        assert_eq!(logits.dims(), &[1, 176, 8]);
+        assert_eq!(m.forwards, 3);
     }
 }

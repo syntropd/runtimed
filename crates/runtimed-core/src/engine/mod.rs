@@ -12,6 +12,6 @@ pub mod think_budget;
 
 pub use embedder::{cosine_similarity, generate_embedding, EMBEDDING_DIM};
 pub use generator::{generate_tokens, GenerationRequest, GenerationResult};
-pub use speculate_engine::generate_speculative;
+pub use speculate_engine::{generate_speculative, generate_speculative_tree};
 pub use stream_journal::{JournalEntry, StreamJournal};
 pub use think_budget::{BudgetAction, ReasoningEffort, ThinkBudget, ThinkingPhase};

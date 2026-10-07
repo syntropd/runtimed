@@ -83,7 +83,9 @@ pub(crate) fn generate<M: TextModel>(
 ) -> runtimed_model::Result<Vec<u32>> {
     if max_new == 0 { return Ok(Vec::new()); }
     model.reset();
-    let logits = model.forward(prompt, 0)?;
+    let logits = runtimed_model::decode::generate::prefill_chunked(
+        model, prompt, runtimed_model::decode::generate::DEFAULT_PREFILL_CHUNK_SIZE,
+    )?;
     let (spiller, mut cache) = (SpillManager::new(10), PagedKvCache::new(1));
     decode_loop_managed(model, &logits, prompt.len(), eos, max_new, next, ctrl, &spiller, &mut cache, DEFAULT_CHECK_INTERVAL)
 }

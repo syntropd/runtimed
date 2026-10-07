@@ -60,6 +60,38 @@ pub fn causal_mask(
     Ok(Tensor::from_vec(m, (t_q, t_k), dev)?)
 }
 
+/// Additive tree attention mask `[t_tree, t_k]`: 0 where allowed, -inf elsewhere.
+///
+/// Query `i` sits in the candidate tree at offset `prefix_len + i`.
+/// It may attend to all prefix tokens `0..prefix_len`, itself `prefix_len + i`,
+/// and any ancestor node `j` in the tree.
+pub fn tree_attention_mask(
+    prefix_len: usize,
+    tree_parents: &[Option<usize>],
+    dev: &Device,
+) -> Result<Tensor> {
+    let t_tree = tree_parents.len();
+    let t_k = prefix_len + t_tree;
+    let neg = f32::NEG_INFINITY;
+    let mut m = vec![neg; t_tree * t_k];
+    for i in 0..t_tree {
+        for j in 0..prefix_len {
+            m[i * t_k + j] = 0.0;
+        }
+        m[i * t_k + prefix_len + i] = 0.0;
+        let mut curr = tree_parents[i];
+        while let Some(parent_idx) = curr {
+            if parent_idx < t_tree {
+                m[i * t_k + prefix_len + parent_idx] = 0.0;
+                curr = tree_parents[parent_idx];
+            } else {
+                break;
+            }
+        }
+    }
+    Ok(Tensor::from_vec(m, (t_tree, t_k), dev)?)
+}
+
 /// Repeat KV heads `n_rep` times along dim 1 (`[B, Hv, T, D]`).
 fn repeat_kv_heads(kv: &Tensor, n_rep: usize) -> Result<Tensor> {
     if n_rep == 1 {
@@ -141,5 +173,36 @@ mod tests {
             let o = attention(&q, &k_act, &v_act, None, 1.0).unwrap();
             assert_eq!(o.dims(), &[1, 2, 1, 4]);
         }
+    }
+
+    #[test]
+    fn test_tree_attention_mask() {
+        let dev = Device::Cpu;
+        // Prefix length 2, tree of 3 nodes: Node 0 (root), Node 1 (child of 0), Node 2 (child of 0, sibling of 1)
+        let parents = vec![None, Some(0), Some(0)];
+        let mask = tree_attention_mask(2, &parents, &dev).unwrap().to_vec2::<f32>().unwrap();
+        assert_eq!(mask.len(), 3);
+        assert_eq!(mask[0].len(), 5);
+
+        // Node 0 can see prefix 0, 1 and self (2), but not 3, 4
+        assert_eq!(mask[0][0], 0.0);
+        assert_eq!(mask[0][1], 0.0);
+        assert_eq!(mask[0][2], 0.0);
+        assert_eq!(mask[0][3], f32::NEG_INFINITY);
+        assert_eq!(mask[0][4], f32::NEG_INFINITY);
+
+        // Node 1 can see prefix 0, 1, parent (2), and self (3), but not sibling (4)
+        assert_eq!(mask[1][0], 0.0);
+        assert_eq!(mask[1][1], 0.0);
+        assert_eq!(mask[1][2], 0.0);
+        assert_eq!(mask[1][3], 0.0);
+        assert_eq!(mask[1][4], f32::NEG_INFINITY);
+
+        // Node 2 can see prefix 0, 1, parent (2), and self (4), but not sibling (3)
+        assert_eq!(mask[2][0], 0.0);
+        assert_eq!(mask[2][1], 0.0);
+        assert_eq!(mask[2][2], 0.0);
+        assert_eq!(mask[2][3], f32::NEG_INFINITY);
+        assert_eq!(mask[2][4], 0.0);
     }
 }

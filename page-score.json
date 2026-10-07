@@ -1,6 +1,6 @@
 {
  "repo": "runtimed",
- "rev": "a7f085d",
+ "rev": "8fcd29a",
  "dirty": false,
  "pages": [
   {
@@ -1545,14 +1545,14 @@
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/sd_sampler.rs",
-   "lines": 246,
+   "lines": 254,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 1
   },
   {
    "path": "./crates/runtimed-model/src/visual_gen/turbo_unet.rs",
-   "lines": 78,
+   "lines": 187,
    "bin_bytes": null,
    "heat_pct": null,
    "reach": 2

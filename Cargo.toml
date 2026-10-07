@@ -22,6 +22,8 @@ repository = "https://github.com/syntropd/runtimed"
 anyhow = "1.0.86"
 base64 = "0.22"
 candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 clap = { version = "4.5.13", features = ["derive", "env"] }
 clap_complete = "4.5.13"

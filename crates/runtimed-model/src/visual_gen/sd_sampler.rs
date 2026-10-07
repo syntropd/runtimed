@@ -115,6 +115,14 @@ impl VisualGenSampler {
         let _latent_w = (width / 8).max(8);
         let _latent_h = (height / 8).max(8);
 
+        if width >= 256 && height >= 256 {
+            if let Ok(Some(png)) =
+                TurboUnet::try_render_sdxl_turbo(trimmed, width, height, self.cfg.steps, seed)
+            {
+                return Ok(png);
+            }
+        }
+
         // Derive deterministic visual latent representation from prompt + seed.
         let mut prompt_seed = trimmed.bytes().fold(seed, |acc, b| {
             acc.wrapping_mul(6364136223846793005).wrapping_add(b as u64)
